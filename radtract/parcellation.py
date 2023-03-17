@@ -1,0 +1,519 @@
+import nibabel as nib
+import numpy.linalg
+from nibabel.affines import apply_affine
+from skimage.morphology import binary_dilation, binary_closing
+from sklearn.svm import SVC
+from dipy.segment.clustering import QuickBundles
+from dipy.segment.metric import AveragePointwiseEuclideanMetric
+from dipy.segment.featurespeed import ResampleFeature
+import numpy as np
+import vtk
+from dipy.tracking.streamline import transform_streamlines
+from dipy.io.streamline import load_trk
+from dipy.align.reslice import reslice
+from scipy.spatial import cKDTree
+import os
+
+
+def load_trk_streamlines(filename: str):
+    """
+    Convenience function to load streamlines from a trk file
+    :param filename: filename of trk file
+    :return: streamlines in dipy format
+    """
+    fib = load_trk(filename, "same", bbox_valid_check=False)
+    streamlines = fib.streamlines
+    return streamlines
+
+
+def intersect_image(spacing, si, ei, sf, ef):
+    """
+    Calculate the intersection of a line segment with a voxel grid.
+    :param spacing:
+    :param si: start index
+    :param ei: end index
+    :param sf: continuous start index
+    :param ef: continuous end index
+    :return: list of tuples (voxel index, length of segment in voxel)
+    """
+
+    out = []
+    if np.array_equal(si, ei):
+        d = np.empty(3)
+        for i in range(3):
+            d[i] = (sf[i]-ef[i])*spacing[i]
+
+        out.append((si, np.linalg.norm(d)))
+        return out
+
+    bounds = np.empty(6)
+
+    entrance_point = np.empty(3)
+    exit_point = np.empty(3)
+
+    start_point = np.empty(3)
+    end_point = np.empty(3)
+
+    t0 = vtk.reference(-1)
+    t1 = vtk.reference(-1)
+    for i in range(3):
+        start_point[i] = sf[i]
+        end_point[i] = ef[i]
+
+        if si[i] > ei[i]:
+            t = si[i]
+            si[i] = ei[i]
+            ei[i] = t
+
+    for x in range(si[0], ei[0]+1):
+        for y in range(si[1], ei[1]+1):
+            for z in range(si[2], ei[2]+1):
+                bounds[0] = x - 0.5
+                bounds[1] = x + 0.5
+                bounds[2] = y - 0.5
+                bounds[3] = y + 0.5
+                bounds[4] = z - 0.5
+                bounds[5] = z + 0.5
+
+                entry_plane = vtk.reference(-1)
+                exit_plane = vtk.reference(-1)
+
+                hit = vtk.vtkBox.IntersectWithLine(bounds, start_point, end_point, t0, t1, entrance_point, exit_point, entry_plane, exit_plane)
+                if hit > 0:
+                    if entry_plane >= 0 and exit_plane >= 0:
+                        d = np.empty(3)
+                        for i in range(3):
+                            d[i] = (exit_point[i] - entrance_point[i])*spacing[i]
+                        out.append(((x, y, z), np.linalg.norm(d)))
+                    elif entry_plane >= 0:
+                        d = np.empty(3)
+                        for i in range(3):
+                            d[i] = (ef[i] - entrance_point[i])*spacing[i]
+                        out.append(((x, y, z), np.linalg.norm(d)))
+                    elif exit_plane >= 0:
+                        d = np.empty(3)
+                        for i in range(3):
+                            d[i] = (exit_point[i]-sf[i])*spacing[i]
+                        out.append(((x, y, z), np.linalg.norm(d)))
+    return out
+
+
+def tract_envelope(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                   reference_image: nib.Nifti1Image,
+                   do_closing: bool = False,
+                   out_image_filename: str = None):
+    """
+    Convenience function for tract_density that calculates the binary bundle envelope.
+    :param streamlines: input streamlines
+    :param reference_image: defines geometry of output image
+    :param do_closing: morphological closing of the binary image to remove holes
+    :param out_image_filename: if not None, the output image will be saved to this file
+    :return:
+    """
+    return tract_density(streamlines, reference_image, True, do_closing, out_image_filename)
+
+
+def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                  reference_image: nib.Nifti1Image,
+                  binary: bool = False,
+                  do_closing: bool = False,
+                  out_image_filename: str = None):
+    """
+    Calculate the tract density image for a set of streamlines using the true length of each streamline segment in each voxel.
+    :param streamlines: input streamlines
+    :param reference_image: defines geometry of output image
+    :param binary: if true, the output image will be a binary image with 1 for voxels that are part of the bundle and 0 outside
+    :param do_closing: morphological closing of the binary image to remove holes
+    :param out_image_filename: if not None, the output image will be saved to this file
+    :return:
+    """
+    if binary:
+        print('Calculating bundle envelope')
+    else:
+        print('Calculating tract density image')
+
+    if type(streamlines) is str:
+        streamlines = load_trk_streamlines(streamlines)
+    if type(reference_image) is str:
+        reference_image = nib.load(reference_image)
+
+    image_data = np.copy(reference_image.get_fdata())
+    image_data.fill(0)
+    affine = reference_image.affine
+    spacing = reference_image.header['pixdim'][1:4]
+    streamlines = transform_streamlines(streamlines, np.linalg.inv(affine))
+
+    for s in streamlines:
+        num_points = len(s)
+        for j in range(num_points-1):
+            start_index_cont = s[j]
+            start_index = np.round(start_index_cont).astype('int64')
+
+            end_index_cont = s[j+1]
+            end_index = np.round(end_index_cont).astype('int64')
+
+            segments = intersect_image(spacing, start_index, end_index, start_index_cont, end_index_cont)
+            for seg in segments:
+                if binary:
+                    image_data[seg[0][0], seg[0][1], seg[0][2]] = 1
+                else:
+                    image_data[seg[0][0], seg[0][1], seg[0][2]] += seg[1]
+
+    if binary and do_closing:
+        image_data = binary_closing(image_data)
+    if binary:
+        image_data = image_data.astype('uint8')
+        tdi = nib.Nifti1Image(image_data, header=reference_image.header, affine=reference_image.affine, dtype='uint8')
+    else:
+        tdi = nib.Nifti1Image(image_data, header=reference_image.header, affine=reference_image.affine)
+    if out_image_filename is not None:
+        nib.save(tdi, out_image_filename)
+    print('done')
+
+    return tdi
+
+
+def estimate_num_parcels(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                         reference_image: nib.Nifti1Image,
+                         num_voxels: int = 5):
+    """
+    Estimates the number of parcels when aiming for a parcel size in tract direction of about 'num_voxels' voxels.
+    :param streamlines: input streamlines
+    :param reference_image: us this image geometry
+    :param num_voxels: desired parcel size in tract direction
+    :return:
+    """
+    print('Estimating number of possible parcels for on average ' + str(num_voxels) + ' traversed voxels per parcel.')
+    average_spacing = np.mean(reference_image.header['pixdim'][1:4])
+    num_voxels_passed = 0
+
+    for s in streamlines:
+        num_points = len(s)
+
+        s_len = 0
+        for j in range(num_points-1):
+            v1 = s[j]
+            v2 = s[j + 1]
+
+            d = np.empty(3)
+            for i in range(3):
+                d[i] = v1[i] - v2[i]
+            s_len += np.linalg.norm(d)
+
+        num_voxels_passed += s_len/average_spacing
+
+    num_voxels_passed /= len(streamlines)
+    num_parcels = int(np.ceil(num_voxels_passed / num_voxels))
+    print('Number of estimated parcels ' + str(num_parcels))
+
+    if num_parcels < 3:
+        if num_voxels > 2:
+            print('Tract is too short. Trying to estimate number of parcels with ' + str(num_voxels - 1) + ' voxels per parcel.')
+            estimate_num_parcels(streamlines, reference_image, num_voxels - 1)
+        else:
+            raise Exception('Tract is too short. Resulting number of parcels each covering ' + str(num_voxels) + ' is ' + str(num_parcels))
+
+    return num_parcels
+
+
+def is_flipped(s: np.array,
+               ref: np.array):
+    """
+    Checks if a streamline is flipped compared to a reference streamline using the minimum average direct-flip distance (Garyfallidis et al. 2012).
+    :param s: input streamline
+    :param ref: reference streamline
+    :return: True if s is flipped relative to ref, False if not
+    """
+    d_direct = 0
+    d_flipped = 0
+
+    assert len(s) == len(ref), 'Streamline and reference streamline must have the same number of points.'
+
+    num = len(s)
+
+    for i in range(num):
+        p1 = s[i]
+        p2 = ref[i]
+
+        a = p1[0] - p2[0]
+        b = p1[1] - p2[1]
+        c = p1[2] - p2[2]
+        d_direct += a*a+b*b+c*c
+
+        p1 = s[num-i-1]
+        a = p1[0] - p2[0]
+        b = p1[1] - p2[1]
+        c = p1[2] - p2[2]
+        d_flipped += a*a+b*b+c*c
+
+    if d_direct < d_flipped:
+        return False
+    return True
+
+
+def split_parcellation(parcellation: nib.Nifti1Image):
+    """
+    Splits a parcellation into a list of binary maps.
+    :param parcellation: input parcellation
+    :return: list of binary maps
+    """
+    data = parcellation.get_fdata().astype('uint8')
+    labels = np.unique(data)
+    parcels = []
+    for label in labels:
+        if label > 0:
+            bin_map = np.zeros(data.shape, dtype='uint8')
+            bin_map[np.where(data == label)] = 1
+            parcel = nib.Nifti1Image(bin_map, header=parcellation.header, affine=parcellation.affine)
+            parcels.append(parcel)
+    return parcels
+
+
+def is_inside(index, image):
+    """
+    Checks if a given index is inside the image.
+    :param index:
+    :param image:
+    :return:
+    """
+    for i in range(3):
+        if index[i] < 0 or index[i] > image.shape[i] - 1:
+            return False
+    return True
+
+
+def resample_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                         nb_points: int):
+    """
+    Resamples all streamlines to a given number of points.
+    :param streamlines: streamlines to resample
+    :param nb_points: desired number of points
+    :return: resampled streamlines
+    """
+    streamlines_new = []
+    for sl in streamlines:
+        feature = ResampleFeature(nb_points=nb_points)
+        streamlines_new.append(feature.extract(sl))
+    return streamlines_new
+
+
+def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                         start_region: nib.Nifti1Image = None,
+                         reference_streamline: np.array = None):
+    """
+    Reorients streamlines to not be flipped relative to each other.
+    :param streamlines: streamlines to reorient
+    :param start_region: if set the streamlines are reoriented to all start in this region
+    :param reference_streamline: if start_region is not set the streamlines are reoriented to be aligned with this reference streamline
+    :return:
+    """
+
+    print('Reorienting streamlines...')
+    assert start_region is not None or reference_streamline is not None, 'No reorientation possible. Please provide either start and end region or reference streamline.'
+
+    if start_region is not None:
+        start_region_data = start_region.get_fdata().astype('uint8')
+
+        streamlines_imagecoords = transform_streamlines(streamlines, np.linalg.inv(start_region.affine))
+
+        s_idxs = []
+        e_idxs = []
+        for s in streamlines_imagecoords:
+            start_index = s[0]
+            end_index = s[-1]
+            s_idxs.append(start_index)
+            e_idxs.append(end_index)
+
+        nonzero = np.nonzero(start_region_data)
+        nonzero = np.array([nonzero[0], nonzero[1], nonzero[2]]).T
+        dists_s, _ = cKDTree(nonzero, 1, copy_data=True).query(s_idxs, k=1)
+        dists_e, _ = cKDTree(nonzero, 1, copy_data=True).query(e_idxs, k=1)
+
+        idx = 0
+        oriented_streamlines = []
+        for d_s, d_e in zip(dists_s, dists_e):
+            if d_s < d_e:
+                oriented_streamlines.append(streamlines[idx])
+            else:
+                oriented_streamlines.append(np.flip(streamlines[idx], axis=0))
+            idx += 1
+
+        return oriented_streamlines
+    elif reference_streamline is not None:
+
+        streamlines_resampled = resample_streamlines(streamlines, len(reference_streamline))
+
+        oriented_streamlines = []
+        idx = 0
+        for s in streamlines_resampled:
+            if is_flipped(s, reference_streamline):
+                oriented_streamlines.append(np.flip(streamlines[idx], axis=0))
+            else:
+                oriented_streamlines.append(streamlines[idx])
+            idx += 1
+        return oriented_streamlines
+
+
+def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                     binary_envelope: nib.Nifti1Image,
+                     num_parcels: int = None,
+                     parcellation_type: str = 'hyperplane',
+                     start_region: nib.Nifti1Image = None,
+                     reference_streamline: np.array = None,
+                     dilate_envelope: bool = False,
+                     close_envelope: bool = True,
+                     out_parcellation_filename: str = None,
+                     new_voxel_size: tuple = None,
+                     postprocess: bool = False):
+    """
+    Parcellate input streamlines into num_parcels parcels.
+    :param streamlines: input streamlines in dipy format
+    :param binary_envelope: binary mask defining area to parcellate, should cover input streamlines
+    :param num_parcels: desired number of parcels
+    :param parcellation_type: 'hyperplane' or 'centerline', 'hyperplane' is the improved approach published in the RadTract paper [REF]
+    :param start_region: binary mask defining the start region of the streamlines used for reorientation. if not set, reference streamline is used for reorientation.
+    :param reference_streamline: reference streamline for reorientation. only used if start_region is not set. if both are not set, the tract centerline is used as reference for reorientation.
+    :param dilate_envelope: dilate binary envelope to obtain a slightly bigger parcellation. this can be useful for visualization purposes.
+    :param close_envelope: close holes in binary envelope. this can be useful to close holes resulting from sparse bundles.
+    :param out_parcellation_filename: if set, the parcellation is saved to this file
+    :param new_voxel_size: resample binary envelope to this voxel size before parcellation
+    :param postprocess: remove outliers by voting label of each voxel by label of its 26 neighbors
+    :return: parcellation: parcellation as image containing the parcel label for each nonzero voxel of the streamline envelope
+    :return: reference_streamline: reference streamline used in the parcellation process (none if start_region is set and reference_streamline is not set)
+    :return: reduced_streamlines: reduced number of streamlines used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
+    :return: svc: support vector classifier used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
+    """
+
+    # load data if inputs are filenames
+    if type(streamlines) is str and os.path.isfile(streamlines):
+        streamlines = load_trk_streamlines(streamlines)
+    if type(binary_envelope) is str and os.path.isfile(binary_envelope):
+        binary_envelope = nib.load(binary_envelope)
+    if type(start_region) is str and os.path.isfile(start_region):
+        start_region = nib.load(start_region)
+
+    assert type(streamlines) is nib.streamlines.array_sequence.ArraySequence, 'Streamlines must be in dipy format!'
+    assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
+    if start_region is not None:
+        assert type(start_region) is nib.Nifti1Image, 'Start region must be Nifti1Image!'
+    assert parcellation_type in ['hyperplane', 'centerline'], 'Parcellation type must be hyperplane or centerline!'
+
+    print('Input number of fibers:', len(streamlines))
+    assert len(streamlines) > 0, 'No streamlines found!'
+
+    if num_parcels is None:
+        num_parcels = estimate_num_parcels(binary_envelope, streamlines)
+
+    feature = ResampleFeature(nb_points=num_parcels)
+    metric = AveragePointwiseEuclideanMetric(feature)
+    if start_region is None:
+        print('Creating local reference centroid')
+        qb = QuickBundles(threshold=9999., metric=metric)
+        local_reference_streamline = qb.cluster(streamlines).centroids[0]
+        if reference_streamline is not None and is_flipped(reference_streamline, local_reference_streamline):
+            local_reference_streamline = np.flip(local_reference_streamline, axis=0)
+        reference_streamline = local_reference_streamline
+
+    oriented_streamlines = reorient_streamlines(streamlines=streamlines, start_region=start_region, reference_streamline=reference_streamline)
+
+    envelope_data = np.copy(binary_envelope.get_fdata().astype('uint8'))
+    if dilate_envelope:
+        envelope_data = binary_dilation(envelope_data).astype('uint8')
+    if close_envelope:
+        envelope_data = binary_closing(envelope_data).astype('uint8')
+
+    affine = binary_envelope.affine
+    if new_voxel_size is not None:
+        old_voxel_sizes = binary_envelope.header.get_zooms()[:3]
+        envelope_data, affine = reslice(envelope_data, affine, old_voxel_sizes, new_voxel_size)
+
+    nonzero = np.where(envelope_data > 0)
+    envelope_world_coordinates = []
+    envelope_indices = list(zip(nonzero[0], nonzero[1], nonzero[2]))
+    for idx in envelope_indices:
+        envelope_world_coordinates.append(apply_affine(affine, idx))
+    envelope_world_coordinates = np.array(envelope_world_coordinates)
+
+    # define outputs
+    reduced_streamlines = None
+    svc = None
+
+    if parcellation_type == 'hyperplane':
+        print('Reducing input bundle')
+        threshold = 20
+        num_centroids = 0
+        reduced_streamlines = None
+        while num_centroids < 500 and threshold > 2.0:  # 500 seems to work ok
+            qb = QuickBundles(threshold=threshold, metric=metric)
+            reduced_streamlines = qb.cluster(oriented_streamlines).centroids
+            threshold *= 0.9
+            num_centroids = len(reduced_streamlines)
+        print('Reduced number of fibers:', num_centroids)
+
+        samples = []
+        classes = []
+        for s in reduced_streamlines:
+            samples += s.tolist()
+            classes += np.arange(1, len(s) + 1, 1).tolist()
+
+        samples = np.array(samples)
+        classes = np.array(classes)
+
+        print('Fitting parcellation model to ' + str(len(classes)) + ' points')
+        svc = SVC(C=1, kernel='rbf')
+        svc.fit(X=samples, y=classes)
+
+        print('Predicting hyperplane-parcellation for ' + str(len(envelope_world_coordinates)) + ' voxels')
+        predicted_parcels = svc.predict(X=envelope_world_coordinates)
+
+        i = 0
+        for parcel in predicted_parcels:
+            envelope_data[envelope_indices[i]] = parcel
+            i += 1
+
+        print('Finished hyperplane-based parcellation')
+
+    elif parcellation_type == 'centerline':
+        print('Creating centerline-based parcellation')
+
+        # create centerline
+        qb = QuickBundles(threshold=9999., metric=metric)
+        centerline = qb.cluster(oriented_streamlines).centroids[0]
+
+        # find nearest centerline point for each envelope index and label accordingly
+        _, segment_idxs = cKDTree(centerline, 1, copy_data=True).query(envelope_world_coordinates, k=1)
+
+        # write parcellation labels to image
+        for idx, label in zip(envelope_indices, segment_idxs):
+            envelope_data[idx] = label + 1
+
+        print('Finished centerline-based parcellation')
+
+    else:
+        print('Invalid parcellation type')
+        envelope_data = None
+
+    if postprocess and envelope_data is not None:
+        print('Postprocessing parcellation')
+        data_temp = np.zeros(envelope_data.shape).astype('uint8')
+        labels = np.unique(envelope_data)
+        idxs = np.where(envelope_data > 0)
+        for x, y, z in zip(idxs[0], idxs[1], idxs[2]):
+            neighbors = envelope_data[x - 1:x + 2, y - 1:y + 2, z - 1:z + 2]
+            max_count = 0
+            max_count_label = 0
+            for label in labels:
+                if label > 0:
+                    label_count = len(np.where(neighbors == label)[0])
+                    if label_count > max_count:
+                        max_count = label_count
+                        max_count_label = label
+            data_temp[x, y, z] = max_count_label
+        envelope_data = data_temp
+
+    parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
+    if out_parcellation_filename is not None:
+        print('Saving ' + parcellation_type + '-based parcellation to ' + out_parcellation_filename)
+        nib.save(parcellation, out_parcellation_filename)
+
+    return parcellation, reference_streamline, reduced_streamlines, svc
