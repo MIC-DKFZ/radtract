@@ -10,7 +10,8 @@ def calc_radiomics(parcellation_file_name: str,
                    out_csv_file: str,
                    num_parcels: int = None,
                    features: dict = None,
-                   pyrad_params=None):
+                   pyrad_params=None,
+                   remove_paths: bool = False):
     """
     Calculate radiomics features for a parcellation and a matching parameter map using pyradiomcs
     :param parcellation_file_name:
@@ -19,6 +20,7 @@ def calc_radiomics(parcellation_file_name: str,
     :param num_parcels: optional to ensure that all labels are present in the parcellation
     :param features: append new features to this dict, if none, create empty dict
     :param pyrad_params: if none, use default parameter file (designed for FA maps)
+    :param remove_paths: remove paths from feature file
     :return:
     """
     if pyrad_params is not None:
@@ -48,8 +50,12 @@ def calc_radiomics(parcellation_file_name: str,
         print('pyradiomics processing label ' + str(label))
         feature_vector = extractor.execute(imageFilepath=parameter_map_file_name, maskFilepath=parcellation_file_name, label=label)
         print('pyradiomics formatting results ...')
-        features['map'].append(parameter_map_file_name)
-        features['parcellation'].append(parcellation_file_name)
+        if remove_paths:
+            features['map'].append(os.path.basename(parameter_map_file_name))
+            features['parcellation'].append(os.path.basename(parcellation_file_name))
+        else:
+            features['map'].append(parameter_map_file_name)
+            features['parcellation'].append(parcellation_file_name)
         features['label'].append(label)
         for featureName in feature_vector.keys():
             try:

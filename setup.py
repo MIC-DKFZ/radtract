@@ -9,6 +9,7 @@ setup(name='radtract',
       author_email='p.neher@dkfz.de',
       license='Apache 2.0',
       packages=['radtract'],
+      include_package_data=True,
       install_requires=[
           'dipy',
           'pyradiomics',
@@ -17,7 +18,8 @@ setup(name='radtract',
           'vtk',
           'pandas',
           'nibabel',
-          'numpy'
+          'numpy',
+          'pytest',
       ],
       zip_safe=False,
       classifiers=[
