@@ -1,5 +1,6 @@
 test:pytest:
-  image: python:3.10
+  image: python:3.8
   script:
+    - pip install numpy
     - python setup.py install
     - pytest test/
