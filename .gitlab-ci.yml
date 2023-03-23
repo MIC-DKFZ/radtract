@@ -1,0 +1,5 @@
+test:pytest:
+  image: python:3.10
+  script:
+    - python setup.py install
+    - pytest test/
