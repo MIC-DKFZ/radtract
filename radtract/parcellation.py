@@ -354,6 +354,42 @@ def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
         return oriented_streamlines
 
 
+def batch_parcellate_tracts(streamlines: list,
+                            binary_envelopes: list,
+                            num_parcels: list,
+                            start_regions: list,
+                            out_parcellation_filenames: list,
+                            parcellation_type: str = 'hyperplane',
+                            dilate_envelope: bool = False,
+                            close_envelope: bool = True,
+                            postprocess: bool = False
+                            ):
+    """
+    Convenience function to parcellate multiple tracts.
+    :param streamlines:
+    :param binary_envelopes:
+    :param num_parcels:
+    :param start_regions:
+    :param out_parcellation_filenames:
+    :param parcellation_type:
+    :param dilate_envelope:
+    :param close_envelope:
+    :param postprocess:
+    :return:
+    """
+    assert len(streamlines) == len(binary_envelopes) == len(num_parcels) == len(start_regions) == len(out_parcellation_filenames), 'All inputs must have the same length.'
+    for i in range(len(streamlines)):
+        parcellate_tract(streamlines=streamlines[i],
+                         binary_envelope=binary_envelopes[i],
+                         num_parcels=num_parcels[i],
+                         start_region=start_regions[i],
+                         parcellation_type=parcellation_type,
+                         dilate_envelope=dilate_envelope,
+                         close_envelope=close_envelope,
+                         out_parcellation_filename=out_parcellation_filenames[i],
+                         postprocess=postprocess)
+
+
 def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      binary_envelope: nib.Nifti1Image,
                      num_parcels: int = None,

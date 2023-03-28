@@ -39,6 +39,21 @@ def map_check(map: str,
         print('Map range is OK: ', range)
 
 
+def batch_calc_radiomics(parcellation_file_names: list,
+                         parameter_map_file_names: list,
+                         out_csv_files: list):
+    """
+    Calculate radiomics features for a list of parcellations and parameter maps
+    :param parcellation_file_names: list of parcellation files
+    :param parameter_map_file_names: list of parameter maps
+    :param out_csv_files: save features to these files
+    """
+    assert len(parcellation_file_names) == len(parameter_map_file_names)
+    assert len(parcellation_file_names) == len(out_csv_files)
+    for i in range(len(parcellation_file_names)):
+        calc_radiomics(parcellation_file_names[i], parameter_map_file_names[i], out_csv_files[i])
+
+
 def calc_radiomics(parcellation_file_name: str,
                    parameter_map_file_name: str,
                    out_csv_file: str,
@@ -55,7 +70,7 @@ def calc_radiomics(parcellation_file_name: str,
     :param features: append new features to this dict, if none, create empty dict
     :param pyrad_params: if none, use default parameter file (designed for FA maps)
     :param remove_paths: remove paths from feature file
-    :return:
+    :return: features dict
     """
     if pyrad_params is not None:
         extractor = featureextractor.RadiomicsFeatureExtractor(pyrad_params)

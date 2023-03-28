@@ -1,5 +1,30 @@
-test:pytest:
+stages:
+  - lint
+  - install
+  - test
+
+test:license:
   image: python:3.10
+  stage: lint
+  before_script:
+    - pip install --upgrade pip
+    - pip install poetry
+    - poetry install
+  script:
+    - poetry run reuse lint
+
+test:install:
+  image: python:3.10
+  stage: install
+  before_script:
+    - pip install --upgrade pip
   script:
     - python setup.py install
+
+test:pytest:
+  image: python:3.10
+  stage: test
+  before_script:
+    - pip install --upgrade pip
+  script:
     - pytest test/
