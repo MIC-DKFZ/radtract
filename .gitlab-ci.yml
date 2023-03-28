@@ -1,15 +1,6 @@
 stages:
-  - install
   - test
-
-test:install:
-  image: python:3.10
-  stage: install
-  before_script:
-    - pip install --upgrade pip
-    - pip install numpy
-  script:
-    - python setup.py install
+  - run
 
 test:pytest:
   image: python:3.10
@@ -19,4 +10,15 @@ test:pytest:
     - pip install numpy
     - pip install pytest
   script:
-    - pytest test/
+    - pytest $CI_PROJECT_DIR/test/
+
+test:run:
+  image: python:3.10
+  stage: run
+  before_script:
+    - pip install --upgrade pip
+    - pip install numpy
+  script:
+    - python setup.py install
+    - radtract_features -h
+    - radtract_parcellate -h
