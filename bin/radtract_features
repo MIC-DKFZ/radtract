@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+
+import argparse
+from radtract import features
+import nibabel as nib
+
+
+def main():
+    parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
+    parser.add_argument('--parcellation', type=str, help='Input parcellation file')
+    parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
+    parser.add_argument('--output', type=str, help='Output feature file (.csv)')
+    args = parser.parse_args()
+
+    features.calc_radiomics(parcellation_file_name=args.parcellation,
+                            parameter_map_file_name=args.map,
+                            out_csv_file=args.output
+                            )
+
+
+if __name__ == '__main__':
+    main()
