@@ -9,6 +9,7 @@ test:pytest:
     - pip install --upgrade pip
     - python -m venv testenv
     - source testenv/bin/activate
+    - pip install numpy
     - pip install -r requirements.txt
   script:
     - pytest tests/
@@ -19,6 +20,7 @@ test:run:
   before_script:
     - pip install --upgrade pip
     - python -m venv testenv
+    - pip install numpy
     - source testenv/bin/activate
   script:
     - python setup.py install
