@@ -12,7 +12,6 @@ setup(name='radtract',
       include_package_data=True,
       install_requires=[
           'numpy',
-          'pytest',
           'pandas',
           'argparse',
           'scikit-image',

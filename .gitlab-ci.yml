@@ -7,8 +7,7 @@ test:pytest:
   stage: test
   before_script:
     - pip install --upgrade pip
-    - pip install numpy
-    - pip install pytest
+    - pip install -r requirements.txt
   script:
     - pytest tests/
 
@@ -17,7 +16,6 @@ test:run:
   stage: run
   before_script:
     - pip install --upgrade pip
-    - pip install numpy
   script:
     - python setup.py install
     - radtract_features -h
