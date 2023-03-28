@@ -7,6 +7,8 @@ test:pytest:
   stage: test
   before_script:
     - pip install --upgrade pip
+    - python -m venv testenv
+    - source testenv/bin/activate
     - pip install -r requirements.txt
   script:
     - pytest tests/
@@ -16,6 +18,8 @@ test:run:
   stage: run
   before_script:
     - pip install --upgrade pip
+    - python -m venv testenv
+    - source testenv/bin/activate
   script:
     - python setup.py install
     - radtract_features -h
