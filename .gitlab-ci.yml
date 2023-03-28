@@ -9,6 +9,7 @@ test:pytest:
 #    - source testenv/bin/activate
     - pip install --upgrade pip
     - pip install numpy
+    - pip install pytest
   script:
     - pip install .
     - pytest tests/
