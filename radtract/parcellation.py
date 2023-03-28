@@ -13,6 +13,7 @@ from dipy.io.streamline import load_trk
 from dipy.align.reslice import reslice
 from scipy.spatial import cKDTree
 import os
+import argparse
 
 
 def load_trk_streamlines(filename: str):
@@ -553,3 +554,25 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         nib.save(parcellation, out_parcellation_filename)
 
     return parcellation, reference_streamline, reduced_streamlines, svc
+
+
+def main():
+    parser = argparse.ArgumentParser(description='RadTract Tract Parcellation')
+    parser.add_argument('--streamlines', type=str, help='Input streamline file')
+    parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
+    parser.add_argument('--start', type=str, help='Input binary start region file', default=None)
+    parser.add_argument('--num_parcels', type=int, help='Number of parcels (0 for automatic estimation)', default=None)
+    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\' or \'centerline\')', default='hyperplane')
+    parser.add_argument('--output', type=str, help='Output parcellation image file')
+    args = parser.parse_args()
+
+    parcellate_tract(streamlines=args.streamlines,
+                     parcellation_type=args.type,
+                     binary_envelope=args.envelope,
+                     num_parcels=args.num_parcels,
+                     start_region=args.start,
+                     out_parcellation_filename=args.output)
+
+
+if __name__ == '__main__':
+    main()

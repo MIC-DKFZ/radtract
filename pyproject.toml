@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radtract"
+version = "0.1.0"
+authors = [
+  { name="Peter Neher", email="p.neher@dkfz.de" },
+]
+description = "Radiomics Tractometry for advanced along-tract analysis of diffusion MRI"
+readme = "README.md"
+dependencies = [
+    'numpy',
+    'pandas',
+    'argparse',
+    'scikit-image',
+    'scikit-learn',
+    'nibabel',
+    'vtk',
+    'dipy',
+    'pyradiomics',
+]
+license = { file="LICENSE" }
+requires-python = ">=3.7"
+
+classifiers = [
+  'Programming Language :: Python :: 3',
+  'Operating System :: OS Independent',
+  'Development Status :: 5 - Production/Stable'
+]
+
+[project.scripts]
+radtract_parcellate = "radtract.parcellation:main"
+radtract_features = "radtract.features:main"

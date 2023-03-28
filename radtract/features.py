@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import nibabel as nib
 import numpy as np
-import warnings
+import argparse
 
 
 def map_check(map: str,
@@ -125,3 +125,20 @@ def calc_radiomics(parcellation_file_name: str,
     print('pyradiomics finished processing')
 
     return features
+
+
+def main():
+    parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
+    parser.add_argument('--parcellation', type=str, help='Input parcellation file')
+    parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
+    parser.add_argument('--output', type=str, help='Output feature file (.csv)')
+    args = parser.parse_args()
+
+    calc_radiomics(parcellation_file_name=args.parcellation,
+                   parameter_map_file_name=args.map,
+                   out_csv_file=args.output
+                   )
+
+
+if __name__ == '__main__':
+    main()
