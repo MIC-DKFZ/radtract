@@ -10,7 +10,7 @@ test:pytest:
     - pip install numpy
     - pip install pytest
   script:
-    - pytest $CI_PROJECT_DIR/test/
+    - pytest tests/
 
 test:run:
   image: python:3.10
