@@ -5,8 +5,6 @@ test:pytest:
   image: python:3.10
   stage: test
   before_script:
-#    - python -m venv testenv
-#    - source testenv/bin/activate
     - apt-get update && apt-get install libgl1  -y
     - pip install --upgrade pip
     - pip install numpy

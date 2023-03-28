@@ -33,3 +33,6 @@ classifiers = [
 [project.scripts]
 radtract_parcellate = "radtract.parcellation:main"
 radtract_features = "radtract.features:main"
+
+[tool.setuptools.package-data]
+radtract = ["*.yaml"]
