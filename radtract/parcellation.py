@@ -402,7 +402,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     assert len(streamlines) > 0, 'No streamlines found!'
 
     if num_parcels is None:
-        num_parcels = estimate_num_parcels(binary_envelope, streamlines)
+        num_parcels = estimate_num_parcels(streamlines=streamlines, reference_image=binary_envelope)
 
     feature = ResampleFeature(nb_points=num_parcels)
     metric = AveragePointwiseEuclideanMetric(feature)

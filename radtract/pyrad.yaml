@@ -12,7 +12,29 @@ featureClass:
   # enabled by specifying individual feature names (as is done for glcm) and including them in the list.
   shape:
   firstorder:
-  glcm:
+  glcm: # Disable SumAverage (redundant with JointAverage) & Sum Variance (equal to Cluster Tendency) by specifying all other GLCM features available
+    - 'Autocorrelation'
+    - 'JointAverage'
+    - 'ClusterProminence'
+    - 'ClusterShade'
+    - 'ClusterTendency'
+    - 'Contrast'
+    - 'Correlation'
+    - 'DifferenceAverage'
+    - 'DifferenceEntropy'
+    - 'DifferenceVariance'
+    - 'JointEnergy'
+    - 'JointEntropy'
+    - 'Imc1'
+    - 'Imc2'
+    - 'Idm'
+    - 'Idmn'
+    - 'Id'
+    - 'Idn'
+    - 'InverseVariance'
+    - 'MaximumProbability'
+    - 'SumEntropy'
+    - 'SumSquares'
   glrlm:
   glszm:
   gldm:
@@ -25,7 +47,7 @@ setting:
   # images reflect some absolute world value (e.g. ADC maps, T2maps (NOT T2 weighted)), consider disabling the
   # normalization.
   normalize: false
-  normalizeScale: 100  # This allows you to use more or less the same bin width.
+  normalizeScale: 0.5  # This allows you to use more or less the same bin width.
 
   # Resampling:
   # Not enabled in this example. However, because texture calculation assumes isotropic spacing, a forced 2D extraction
