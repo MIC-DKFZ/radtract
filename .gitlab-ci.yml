@@ -7,7 +7,7 @@ test:pytest:
   before_script:
 #    - python -m venv testenv
 #    - source testenv/bin/activate
-    - apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+    - apt-get update && apt-get install libgl1  -y
     - pip install --upgrade pip
     - pip install numpy
     - pip install pytest
