@@ -7,6 +7,7 @@ test:install:
   stage: install
   before_script:
     - pip install --upgrade pip
+    - pip install numpy
   script:
     - python setup.py install
 
@@ -15,5 +16,6 @@ test:pytest:
   stage: test
   before_script:
     - pip install --upgrade pip
+    - pip install numpy
   script:
     - pytest test/
