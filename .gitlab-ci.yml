@@ -5,8 +5,8 @@ test:pytest:
   image: python:3.10
   stage: test
   before_script:
-    - python -m venv testenv
-    - source testenv/bin/activate
+#    - python -m venv testenv
+#    - source testenv/bin/activate
     - pip install --upgrade pip
   script:
     - pip install .
