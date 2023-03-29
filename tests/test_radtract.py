@@ -17,31 +17,37 @@ def load_data():
     return streamlines, beginnings, envelope, centerline_parcellation, hyperplane_parcellation
 
 
+def get_results_path():
+    p = os.path.dirname(__file__) + '/test_results/'
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
 def test_envelope():
     streamlines, beginnings, envelope, _, _ = load_data()
 
-    new_envelope = parcellation.tract_envelope(streamlines, reference_image=beginnings, out_image_filename=tempfile.gettempdir() + '/test_tract_envelope.nii.gz')
+    new_envelope = parcellation.tract_envelope(streamlines, reference_image=beginnings, out_image_filename=get_results_path() + 'test_tract_envelope.nii.gz')
 
     assert np.equal(new_envelope.get_fdata(), envelope.get_fdata()).all(), 'envelope test 1 failed'
-    new_envelope = nib.load(tempfile.gettempdir() + '/test_tract_envelope.nii.gz')
+    new_envelope = nib.load(get_results_path() + 'test_tract_envelope.nii.gz')
     assert np.equal(new_envelope.get_fdata(), envelope.get_fdata()).all(), 'envelope test 2 failed'
 
 
 def test_centerline_parcellation():
     streamlines, beginnings, envelope, centerline_parcellation, _ = load_data()
-    new_parcellation, _, _, _ = parcellation.parcellate_tract(streamlines=streamlines, parcellation_type='centerline', binary_envelope=envelope, num_parcels=17, start_region=beginnings, out_parcellation_filename=tempfile.gettempdir() + '/test_tract_parcellation-centerline.nii.gz')
+    new_parcellation, _, _, _ = parcellation.parcellate_tract(streamlines=streamlines, parcellation_type='centerline', binary_envelope=envelope, num_parcels=17, start_region=beginnings, out_parcellation_filename=get_results_path() + 'test_tract_parcellation-centerline.nii.gz')
 
     assert np.equal(new_parcellation.get_fdata(), centerline_parcellation.get_fdata()).all(), 'centerline parcellation test 1 failed'
-    new_parcellation = nib.load(tempfile.gettempdir() + '/test_tract_parcellation-centerline.nii.gz')
+    new_parcellation = nib.load(get_results_path() + 'test_tract_parcellation-centerline.nii.gz')
     assert np.equal(new_parcellation.get_fdata(), centerline_parcellation.get_fdata()).all(), 'centerline parcellation test 2 failed'
 
 
 def test_hyperplane_parcellation():
     streamlines, beginnings, envelope, _, hyperplane_parcellation = load_data()
-    new_parcellation, _, _, _ = parcellation.parcellate_tract(streamlines=streamlines, parcellation_type='hyperplane', binary_envelope=envelope, num_parcels=17, start_region=beginnings, out_parcellation_filename=tempfile.gettempdir() + '/test_tract_parcellation-hyperplane.nii.gz')
+    new_parcellation, _, _, _ = parcellation.parcellate_tract(streamlines=streamlines, parcellation_type='hyperplane', binary_envelope=envelope, num_parcels=17, start_region=beginnings, out_parcellation_filename=get_results_path() + 'test_tract_parcellation-hyperplane.nii.gz')
 
     assert np.equal(new_parcellation.get_fdata(), hyperplane_parcellation.get_fdata()).all(), 'hyperplane parcellation test 1 failed'
-    new_parcellation = nib.load(tempfile.gettempdir() + '/test_tract_parcellation-hyperplane.nii.gz')
+    new_parcellation = nib.load(get_results_path() + 'test_tract_parcellation-hyperplane.nii.gz')
     assert np.equal(new_parcellation.get_fdata(), hyperplane_parcellation.get_fdata()).all(), 'hyperplane parcellation test 2 failed'
 
 
@@ -59,7 +65,7 @@ def test_hyperplane_features():
     features_df = pd.read_csv(data_folder + 'hyperplane_features.csv')
     new_features = features.calc_radiomics(parcellation_file_name=data_folder + 'hyperplane_parcellation.nii.gz',
                                            parameter_map_file_name=data_folder + 'test_map.nii.gz',
-                                           out_csv_file=tempfile.gettempdir() + '/hyperplane_features.csv',
+                                           out_csv_file=get_results_path() + 'hyperplane_features.csv',
                                            num_parcels=17,
                                            remove_paths=True
                                            )
@@ -73,7 +79,7 @@ def test_centerline_features():
     features_df = pd.read_csv(data_folder + 'centerline_features.csv')
     new_features = features.calc_radiomics(parcellation_file_name=data_folder + 'centerline_parcellation.nii.gz',
                                            parameter_map_file_name=data_folder + 'test_map.nii.gz',
-                                           out_csv_file=tempfile.gettempdir() + '/centerline_features.csv',
+                                           out_csv_file=get_results_path() + 'centerline_features.csv',
                                            num_parcels=17,
                                            remove_paths=True
                                            )

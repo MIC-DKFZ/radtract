@@ -25,6 +25,6 @@ test:pytest:
   script:
     - pip install .
     - pytest tests/
-  #artifacts:
-  #  paths:
-  #    - results/
+  artifacts:
+    paths:
+      - test/test_results/
