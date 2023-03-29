@@ -441,6 +441,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     if num_parcels is None:
         num_parcels = estimate_num_parcels(streamlines=streamlines, reference_image=binary_envelope)
 
+    assert num_parcels > 0, 'Number of parcels must be greater than 0!'
+
     feature = ResampleFeature(nb_points=num_parcels)
     metric = AveragePointwiseEuclideanMetric(feature)
     if start_region is None:
@@ -475,7 +477,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     reduced_streamlines = None
     svc = None
 
-    if parcellation_type == 'hyperplane':
+    if num_parcels > 1 and parcellation_type == 'hyperplane':
         print('Reducing input bundle')
         threshold = 20
         num_centroids = 0
@@ -510,7 +512,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         print('Finished hyperplane-based parcellation')
 
-    elif parcellation_type == 'centerline':
+    elif num_parcels > 1 and parcellation_type == 'centerline':
         print('Creating centerline-based parcellation')
 
         # create centerline
@@ -526,6 +528,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         print('Finished centerline-based parcellation')
 
+    elif num_parcels == 1:
+        print('Only 1 parcel requested, parcellation equals envelope.')
     else:
         print('Invalid parcellation type')
         envelope_data = None
