@@ -5,8 +5,9 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Radiomic Tractometry
-https://git.dkfz.de/mic/personal/group6/neuro/radtract/badges/main/pipeline.svg?ignore_skipped=true
-https://git.dkfz.de/mic/personal/group6/neuro/radtract/badges/main/coverage.svg
+
+[![Build Status](https://git.dkfz.de/mic/personal/group6/neuro/radtract/badges/main/pipeline.svg?ignore_skipped=true)]
+[![Coverage](https://git.dkfz.de/mic/personal/group6/neuro/radtract/badges/main/coverage.svg)
 
 Copyright © German Cancer Research Center (DKFZ), [Division of Medical Image Computing (MIC)](https://www.dkfz.de/en/mic/index.php). Please make sure that your usage of this code is in compliance with the code [license](https://github.com/MIC-DKFZ/radtract/blob/master/LICENSE).
 
