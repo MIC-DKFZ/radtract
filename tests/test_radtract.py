@@ -1,3 +1,7 @@
+# Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import numpy as np
 import pandas as pd
 from radtract import parcellation, features

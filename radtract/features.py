@@ -1,3 +1,7 @@
+# Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from radiomics import featureextractor
 import pandas as pd
 import os

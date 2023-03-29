@@ -1,3 +1,7 @@
+# Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import nibabel as nib
 import numpy.linalg
 from nibabel.affines import apply_affine

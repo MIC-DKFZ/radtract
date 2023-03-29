@@ -1,5 +1,11 @@
-# Radiomic Tractometry
+<!--
+Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
 
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Radiomic Tractometry
+Copyright © German Cancer Research Center (DKFZ), [Division of Medical Image Computing (MIC)](https://www.dkfz.de/en/mic/index.php). Please make sure that your usage of this code is in compliance with the code [license](https://github.com/MIC-DKFZ/radtract/blob/master/LICENSE).
 
 
 ## Getting started
