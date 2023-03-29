@@ -2,7 +2,10 @@ stages:
   - test
 
 test:pytest:
-  image: python:3.10
+  image: python:${VERSION}
+  parallel:
+    matrix:
+      - VERSION: [ "3.8", "3.9", "3.10", "latest" ]
   stage: test
   before_script:
     - apt-get update && apt-get install libgl1  -y
@@ -12,6 +15,6 @@ test:pytest:
   script:
     - pip install .
     - pytest tests/
-  artifacts:
-    paths:
-      - results/
+  #artifacts:
+  #  paths:
+  #    - results/
