@@ -1,5 +1,15 @@
 stages:
-  - test
+  - lint
+  - test 
+
+license_compliance:
+  image: python:3.10
+  stage: lint
+  before_script:
+    - pip install --upgrade pip
+    - pip install reuse
+  script:
+    - reuse lint
 
 test:pytest:
   image: python:${VERSION}
