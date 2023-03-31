@@ -18,6 +18,8 @@ from dipy.align.reslice import reslice
 from scipy.spatial import cKDTree
 import os
 import argparse
+import joblib
+import multiprocessing
 
 
 def load_trk_streamlines(filename: str):
@@ -395,6 +397,19 @@ def batch_parcellate_tracts(streamlines: list,
                          postprocess=postprocess)
 
 
+def predict_points(argstuple):
+    """
+    Helper function to predict points in parallel.
+    :param argstuple: tuple containing svc and X
+    :return: predicted parcel labels
+    """
+    svc = argstuple[0]
+    points = argstuple[1]
+    prediction = svc.predict(points)
+
+    return prediction.tolist(), points.tolist()
+
+
 def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      binary_envelope: nib.Nifti1Image,
                      num_parcels: int = None,
@@ -405,7 +420,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      close_envelope: bool = True,
                      out_parcellation_filename: str = None,
                      new_voxel_size: tuple = None,
-                     postprocess: bool = False):
+                     postprocess: bool = False,
+                     streamline_space: bool = False):
     """
     Parcellate input streamlines into num_parcels parcels.
     :param streamlines: input streamlines in dipy format
@@ -419,6 +435,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     :param out_parcellation_filename: if set, the parcellation is saved to this file
     :param new_voxel_size: resample binary envelope to this voxel size before parcellation
     :param postprocess: remove outliers by voting label of each voxel by label of its 26 neighbors
+    :param streamline_space: if set, the parcellation is performed in streamline space instead of voxel space. The output is not a parcellation image but a dict containing the streamline points and the parcel label for each point.
     :return: parcellation: parcellation as image containing the parcel label for each nonzero voxel of the streamline envelope
     :return: reference_streamline: reference streamline used in the parcellation process (none if start_region is set and reference_streamline is not set)
     :return: reduced_streamlines: reduced number of streamlines used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
@@ -470,16 +487,18 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         old_voxel_sizes = binary_envelope.header.get_zooms()[:3]
         envelope_data, affine = reslice(envelope_data, affine, old_voxel_sizes, new_voxel_size)
 
-    nonzero = np.where(envelope_data > 0)
-    envelope_world_coordinates = []
-    envelope_indices = list(zip(nonzero[0], nonzero[1], nonzero[2]))
-    for idx in envelope_indices:
-        envelope_world_coordinates.append(apply_affine(affine, idx))
-    envelope_world_coordinates = np.array(envelope_world_coordinates)
+    if not streamline_space:
+        nonzero = np.where(envelope_data > 0)
+        envelope_world_coordinates = []
+        envelope_indices = list(zip(nonzero[0], nonzero[1], nonzero[2]))
+        for idx in envelope_indices:
+            envelope_world_coordinates.append(apply_affine(affine, idx))
+        envelope_world_coordinates = np.array(envelope_world_coordinates)
 
     # define outputs
     reduced_streamlines = None
     svc = None
+    streamline_point_parcels = None
 
     if num_parcels > 1 and parcellation_type == 'hyperplane':
         print('Reducing input bundle')
@@ -506,13 +525,40 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         svc = SVC(C=1, kernel='rbf')
         svc.fit(X=samples, y=classes)
 
-        print('Predicting hyperplane-parcellation for ' + str(len(envelope_world_coordinates)) + ' voxels')
-        predicted_parcels = svc.predict(X=envelope_world_coordinates)
+        if not streamline_space:
+            print('Predicting hyperplane-parcellation for ' + str(len(envelope_world_coordinates)) + ' voxels')
+            predicted_parcels = svc.predict(X=envelope_world_coordinates)
 
-        i = 0
-        for parcel in predicted_parcels:
-            envelope_data[envelope_indices[i]] = parcel
-            i += 1
+            i = 0
+            for parcel in predicted_parcels:
+                envelope_data[envelope_indices[i]] = parcel
+                i += 1
+        else:
+            envelope_data = None
+            streamline_point_parcels = dict()
+            streamline_point_parcels['points'] = []
+            streamline_point_parcels['parcels'] = []
+
+            argslist = []
+            for s in oriented_streamlines:
+                argslist.append((svc, s))
+
+            points = np.concatenate(oriented_streamlines, axis=0)
+            print('Predicting hyperplane-parcellation for ' + str(points.shape[0]) + ' streamline points using ' + str(multiprocessing.cpu_count()-1) + ' cores')
+            pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
+            results = pool.map(predict_points, argslist)
+
+            points = []
+            predicted_parcels = []
+            for result in results:
+                predicted_parcels += result[0]
+                points += result[1]
+
+            pool.close()
+            pool.join()
+
+            streamline_point_parcels['points'] = points
+            streamline_point_parcels['parcels'] = predicted_parcels
 
         print('Finished hyperplane-based parcellation')
 
@@ -524,11 +570,21 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         centerline = qb.cluster(oriented_streamlines).centroids[0]
 
         # find nearest centerline point for each envelope index and label accordingly
-        _, segment_idxs = cKDTree(centerline, 1, copy_data=True).query(envelope_world_coordinates, k=1)
+        if not streamline_space:
+            _, segment_idxs = cKDTree(centerline, 1, copy_data=True).query(envelope_world_coordinates, k=1)
 
-        # write parcellation labels to image
-        for idx, label in zip(envelope_indices, segment_idxs):
-            envelope_data[idx] = label + 1
+            # write parcellation labels to image
+            for idx, label in zip(envelope_indices, segment_idxs):
+                envelope_data[idx] = label + 1
+        else:
+            envelope_data = None
+            streamline_point_parcels = dict()
+            streamline_point_parcels['points'] = []
+            streamline_point_parcels['parcels'] = []
+            points = np.concatenate(oriented_streamlines, axis=0)
+            _, segment_idxs = cKDTree(centerline, 1, copy_data=True).query(points, k=1)
+            streamline_point_parcels['points'] = points
+            streamline_point_parcels['parcels'] = segment_idxs + 1
 
         print('Finished centerline-based parcellation')
 
@@ -556,10 +612,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             data_temp[x, y, z] = max_count_label
         envelope_data = data_temp
 
-    parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
-    if out_parcellation_filename is not None:
-        print('Saving ' + parcellation_type + '-based parcellation to ' + out_parcellation_filename)
-        nib.save(parcellation, out_parcellation_filename)
+    if envelope_data is not None:
+        parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
+        if out_parcellation_filename is not None:
+            print('Saving ' + parcellation_type + '-based parcellation to ' + out_parcellation_filename)
+            nib.save(parcellation, out_parcellation_filename)
+    elif streamline_point_parcels is not None:
+        parcellation = streamline_point_parcels
+        joblib.dump(parcellation, out_parcellation_filename.replace('.nii.gz', '.pkl'))
 
     return parcellation, reference_streamline, reduced_streamlines, svc
 

@@ -8,6 +8,9 @@ import os
 import nibabel as nib
 import numpy as np
 import argparse
+import joblib
+from scipy.ndimage.interpolation import map_coordinates
+from nibabel.affines import apply_affine
 
 
 def map_check(map: str,
@@ -127,6 +130,71 @@ def calc_radiomics(parcellation_file_name: str,
         features = pd.DataFrame(features)
         features.to_csv(out_csv_file, index=False)
     print('pyradiomics finished processing')
+
+    return features
+
+
+def calc_tractometry(point_label_file_name: str,
+                     parameter_map_file_name: str,
+                     out_csv_file: str):
+    """
+    Calculate tractometry features using points and corresponding parcel labels
+    :param point_label_file_name:
+    :param parameter_map_file_name:
+    :param out_csv_file:
+    :return:
+    """
+    streamline_point_parcels = joblib.load(point_label_file_name)
+    map = nib.load(parameter_map_file_name)
+    map_data = map.get_fdata()
+    print('Calculating tractometry ...')
+    points = apply_affine(np.linalg.inv(map.affine), streamline_point_parcels['points'])
+    values = map_coordinates(map_data, points.T, order=1)
+    vals_per_parcel = dict()
+    points_per_parcel = dict()
+    for parcel, val, p in zip(streamline_point_parcels['parcels'], values, streamline_point_parcels['points']):
+        if parcel not in vals_per_parcel.keys():
+            vals_per_parcel[parcel] = []
+        vals_per_parcel[parcel].append(val)
+        if parcel not in points_per_parcel.keys():
+            points_per_parcel[parcel] = []
+        points_per_parcel[parcel].append(p)
+
+    # for parcel in points_per_parcel.keys():
+    #     text = ''
+    #     text += '<?xml version="1.0" encoding="UTF-8"?><point_set_file><file_version>0.1</file_version><point_set><time_series><time_series_id>0</time_series_id><Geometry3D ImageGeometry="false" FrameOfReferenceID="0">'
+    #     text += '<IndexToWorld type="Matrix3x3" m_0_0="1" m_0_1="0" m_0_2="0" m_1_0="0" m_1_1="1" m_1_2="0" m_2_0="0" m_2_1="0" m_2_2="1"/><Offset type="Vector3D" x="0" y="0" z="0"/><Bounds>'
+    #     text += '<Min type="Vector3D" x="89.933372497558594" y="98.688766479492188" z="-0.39603650569915771"/><Max type="Vector3D" x="127.03989410400391" y="165.80229187011719" z="141.04673767089844"/></Bounds></Geometry3D>'
+    #     i = 0
+    #     for p in points_per_parcel[parcel]:
+    #         text += '<point><id>' + str(i) + '</id><specification>0</specification>'
+    #         text += '<x>' + str(p[0]) + '</x>'
+    #         text += '<y>' + str(p[1]) + '</y>'
+    #         text += '<z>' + str(p[2]) + '</z>'
+    #         text += '</point>'
+    #         i += 1
+    #     text += '</time_series></point_set></point_set_file>'
+    #     with open(os.path.join(os.path.dirname(point_label_file_name), 'tractometry_centerline_points_' + str(parcel) + '.mps'), 'w') as f:
+    #         f.write(text)
+
+    features = dict()
+    features['map'] = []
+    features['parcellation'] = []
+    features['label'] = []
+    features['tractometry-mean'] = []
+    for parcel in sorted(vals_per_parcel.keys()):
+        features['map'].append(parameter_map_file_name)
+        features['parcellation'].append(point_label_file_name)
+        features['label'].append(parcel)
+        features['tractometry-mean'].append(np.nanmean(vals_per_parcel[parcel]))
+
+    if out_csv_file is not None:
+        if not out_csv_file.endswith('.csv'):
+            out_csv_file += '.csv'
+        print('tractometry saving results ...')
+        features = pd.DataFrame(features)
+        features.to_csv(out_csv_file, index=False)
+    print('tractometry finished processing')
 
     return features
 
