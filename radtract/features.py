@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 import argparse
 import joblib
-from scipy.ndimage.interpolation import map_coordinates
+from scipy.ndimage import map_coordinates
 from nibabel.affines import apply_affine
 
 
@@ -197,6 +197,60 @@ def calc_tractometry(point_label_file_name: str,
     print('tractometry finished processing')
 
     return features
+
+
+def load_features(feature_file_names: list, feature_filter: str = None):
+    """
+    Load features from files
+    :param feature_file_names: list of feature file names
+    :param feature_filter: only use columns containing this string
+    :return: pandas dataframe of selected features, one row per file
+    """
+
+    out_df = None
+    for feature_file_name in feature_file_names:
+        feature_names = []
+
+        feature_df = pd.read_csv(feature_file_name)
+
+        parcels = feature_df['label'].tolist()
+        if feature_filter == 'tractometry' and len(parcels) != 100:
+            print('ERROR: Tractometry file does not contain 100 parcels.')
+            exit(1)
+
+        feature_df = feature_df.drop(columns=['map', 'parcellation', 'label'])
+
+        col_list = [col for col in feature_df if not col.startswith('diagnostic')]
+
+        if feature_filter not in ['all', 'tractometry', None]:
+            col_list = [col for col in col_list if col.__contains__(feature_filter)]
+        if len(col_list) == 0:
+            print('ERROR: No features left after filtering with \'' + feature_filter + '\'', feature_file_name)
+            exit(1)
+
+        # print('shape', len(feature_df.loc[:, feature_df.columns.str.contains('shape')].columns.tolist()))
+        # print('firstorder', len(feature_df.loc[:, feature_df.columns.str.contains('firstorder')].columns.tolist()) // 12)
+        # print('glcm', len(feature_df.loc[:, feature_df.columns.str.contains('glcm')].columns.tolist()) // 12)
+        # print('glrlm', len(feature_df.loc[:, feature_df.columns.str.contains('glrlm')].columns.tolist()) // 12)
+        # print('glszm', len(feature_df.loc[:, feature_df.columns.str.contains('glszm')].columns.tolist()) // 12)
+        # print('gldm', len(feature_df.loc[:, feature_df.columns.str.contains('gldm')].columns.tolist()) // 12)
+        # print('ngtdm', len(feature_df.loc[:, feature_df.columns.str.contains('ngtdm')].columns.tolist()) // 12)
+
+        feature_df = feature_df[col_list]
+
+        for feature in feature_df:
+            for parcel in parcels:
+                feature_names.append(str(parcel) + '_' + str(feature))
+
+        features = feature_df.to_numpy()
+        features = features.flatten(order='F')
+
+        if out_df is None:
+            out_df = pd.DataFrame([features], columns=feature_names)
+        else:
+            out_df = pd.concat([out_df, pd.DataFrame([features], columns=feature_names)], axis=0)
+
+    return out_df
 
 
 def main():
