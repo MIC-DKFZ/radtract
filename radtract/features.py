@@ -199,7 +199,7 @@ def calc_tractometry(point_label_file_name: str,
     return features
 
 
-def load_features(feature_file_names: list, feature_filter: str = None):
+def load_features(feature_file_names: list, feature_filter: str = None, expected_parcels: int = None):
     """
     Load features from files
     :param feature_file_names: list of feature file names
@@ -214,9 +214,8 @@ def load_features(feature_file_names: list, feature_filter: str = None):
         feature_df = pd.read_csv(feature_file_name)
 
         parcels = feature_df['label'].tolist()
-        if feature_filter == 'tractometry' and len(parcels) != 100:
-            print('ERROR: Tractometry file does not contain 100 parcels.')
-            exit(1)
+        if expected_parcels is not None and len(parcels) != expected_parcels:
+            raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:', feature_file_name)
 
         feature_df = feature_df.drop(columns=['map', 'parcellation', 'label'])
 
