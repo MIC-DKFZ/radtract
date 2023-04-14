@@ -560,6 +560,19 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             streamline_point_parcels['points'] = points
             streamline_point_parcels['parcels'] = predicted_parcels
 
+            check = np.unique(predicted_parcels)
+
+            # if there are parcels without points, add the respective centerline point
+            if check.shape[0] != num_parcels:
+
+                qb = QuickBundles(threshold=9999., metric=metric)
+                centerline = qb.cluster(oriented_streamlines).centroids[0]
+                for i in range(num_parcels):
+                    if i+1 not in check:
+                        print('WARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename)
+                        streamline_point_parcels['parcels'] = np.append(streamline_point_parcels['parcels'], i+1)
+                        streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
+
         print('Finished hyperplane-based parcellation')
 
     elif num_parcels > 1 and parcellation_type == 'centerline':
@@ -585,6 +598,15 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             _, segment_idxs = cKDTree(centerline, 1, copy_data=True).query(points, k=1)
             streamline_point_parcels['points'] = points
             streamline_point_parcels['parcels'] = segment_idxs + 1
+            check = np.unique(segment_idxs)
+
+            # if there are parcels without points, add the respective centerline point
+            if check.shape[0] != num_parcels:
+                for i in range(num_parcels):
+                    if i not in check:
+                        print('WARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename)
+                        streamline_point_parcels['parcels'] = np.append(streamline_point_parcels['parcels'], i+1)
+                        streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
 
         print('Finished centerline-based parcellation')
 
@@ -613,6 +635,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         envelope_data = data_temp
 
     if envelope_data is not None:
+
+        assigned_parcels = np.unique(envelope_data)
+        assigned_parcels = assigned_parcels[assigned_parcels > 0]
+        if assigned_parcels.shape[0] != num_parcels:
+            for i in range(1, num_parcels+1):
+                if i not in assigned_parcels:
+                    print('WARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename)
+
         parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
         if out_parcellation_filename is not None:
             print('Saving ' + parcellation_type + '-based parcellation to ' + out_parcellation_filename)

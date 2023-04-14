@@ -99,7 +99,7 @@ def calc_radiomics(parcellation_file_name: str,
     labels = np.unique(parcellation_data)
     print('Found labels', labels)
     if num_parcels is not None:
-        assert num_parcels == len(labels)-1, 'Number of parcels does not match number of labels in parcellation file'
+        assert num_parcels == len(labels)-1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
     for label in labels:
         label = int(label)
         if label == 0:
@@ -136,12 +136,14 @@ def calc_radiomics(parcellation_file_name: str,
 
 def calc_tractometry(point_label_file_name: str,
                      parameter_map_file_name: str,
-                     out_csv_file: str):
+                     out_csv_file: str,
+                     num_parcels: int = None):
     """
     Calculate tractometry features using points and corresponding parcel labels
     :param point_label_file_name:
     :param parameter_map_file_name:
     :param out_csv_file:
+    :param num_parcels: optional to ensure that all labels are present in the parcellation
     :return:
     """
     streamline_point_parcels = joblib.load(point_label_file_name)
@@ -152,6 +154,8 @@ def calc_tractometry(point_label_file_name: str,
     values = map_coordinates(map_data, points.T, order=1)
     vals_per_parcel = dict()
     points_per_parcel = dict()
+    if num_parcels is not None:
+        assert num_parcels == np.unique(streamline_point_parcels['parcels']).shape[0], 'Number of parcels does not match number of labels in ' + point_label_file_name
     for parcel, val, p in zip(streamline_point_parcels['parcels'], values, streamline_point_parcels['points']):
         if parcel not in vals_per_parcel.keys():
             vals_per_parcel[parcel] = []
