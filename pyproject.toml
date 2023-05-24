@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "radtract"
-version = "0.1.1"
+version = "0.1.3"
 authors = [
   { name="Peter Neher", email="p.neher@dkfz.de" },
 ]
