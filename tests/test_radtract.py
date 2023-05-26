@@ -4,10 +4,9 @@
 
 import numpy as np
 import pandas as pd
-from radtract import parcellation, features
+from radtract import parcellation, features, tractdensity
 import nibabel as nib
 import os
-import tempfile
 
 
 def load_data():
@@ -30,7 +29,7 @@ def get_results_path():
 def test_envelope():
     streamlines, beginnings, envelope, _, _ = load_data()
 
-    new_envelope = parcellation.tract_envelope(streamlines, reference_image=beginnings, out_image_filename=get_results_path() + 'test_tract_envelope.nii.gz')
+    new_envelope = tractdensity.tract_envelope(streamlines, reference_image=beginnings, out_image_filename=get_results_path() + 'test_tract_envelope.nii.gz')
 
     assert np.equal(new_envelope.get_fdata(), envelope.get_fdata()).all(), 'envelope test 1 failed'
     new_envelope = nib.load(get_results_path() + 'test_tract_envelope.nii.gz')
