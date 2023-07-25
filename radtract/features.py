@@ -127,8 +127,8 @@ def calc_radiomics(parcellation_file_name: str,
         if not out_csv_file.endswith('.csv'):
             out_csv_file += '.csv'
         print('pyradiomics saving results ...')
-        features = pd.DataFrame(features)
-        features.to_csv(out_csv_file, index=False)
+        features_df = pd.DataFrame(features)
+        features_df.to_csv(out_csv_file, index=False)
     print('pyradiomics finished processing')
 
     return features
@@ -137,15 +137,25 @@ def calc_radiomics(parcellation_file_name: str,
 def calc_tractometry(point_label_file_name: str,
                      parameter_map_file_name: str,
                      out_csv_file: str,
+                     features: dict = None,
                      num_parcels: int = None):
     """
     Calculate tractometry features using points and corresponding parcel labels
     :param point_label_file_name:
     :param parameter_map_file_name:
     :param out_csv_file:
+    :param features: append new features to this dict, if none, create empty dict
     :param num_parcels: optional to ensure that all labels are present in the parcellation
     :return:
     """
+
+    if features is None:
+        features = dict()
+        features['map'] = []
+        features['parcellation'] = []
+        features['label'] = []
+        features['tractometry-mean'] = []
+
     streamline_point_parcels = joblib.load(point_label_file_name)
     map = nib.load(parameter_map_file_name)
     map_data = map.get_fdata()
@@ -178,14 +188,9 @@ def calc_tractometry(point_label_file_name: str,
     #         text += '</point>'
     #         i += 1
     #     text += '</time_series></point_set></point_set_file>'
-    #     with open(os.path.join(os.path.dirname(point_label_file_name), 'tractometry_centerline_points_' + str(parcel) + '.mps'), 'w') as f:
+    #     with open(os.path.join(os.path.dirname(point_label_file_name), 'tractometry_points_' + str(parcel) + '.mps'), 'w') as f:
     #         f.write(text)
 
-    features = dict()
-    features['map'] = []
-    features['parcellation'] = []
-    features['label'] = []
-    features['tractometry-mean'] = []
     for parcel in sorted(vals_per_parcel.keys()):
         features['map'].append(parameter_map_file_name)
         features['parcellation'].append(point_label_file_name)
@@ -196,8 +201,8 @@ def calc_tractometry(point_label_file_name: str,
         if not out_csv_file.endswith('.csv'):
             out_csv_file += '.csv'
         print('tractometry saving results ...')
-        features = pd.DataFrame(features)
-        features.to_csv(out_csv_file, index=False)
+        features_df = pd.DataFrame(features)
+        features_df.to_csv(out_csv_file, index=False)
     print('tractometry finished processing')
 
     return features
@@ -218,6 +223,7 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
         feature_df = pd.read_csv(feature_file_name)
 
         parcels = feature_df['label'].tolist()
+        maps = feature_df['map'].tolist()
         if expected_parcels is not None and len(parcels) != expected_parcels:
             raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:', feature_file_name)
 

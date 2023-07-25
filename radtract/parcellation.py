@@ -306,7 +306,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
     if start_region is not None:
         assert type(start_region) is nib.Nifti1Image, 'Start region must be Nifti1Image!'
-    assert parcellation_type in ['hyperplane', 'centerline'], 'Parcellation type must be hyperplane or centerline!'
+    assert parcellation_type in ['hyperplane', 'centerline', 'static_resampling'], 'Parcellation type must be hyperplane or centerline!'
 
     print('Input number of fibers:', len(streamlines))
     assert len(streamlines) > 0, 'No streamlines found!'
@@ -461,6 +461,17 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                         streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
 
         print('Finished centerline-based parcellation')
+
+    elif num_parcels > 1 and parcellation_type == 'static_resampling' and streamline_space:
+        print('Creating static resampling-based parcellation')
+        envelope_data = None
+        resampled_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels)
+        streamline_point_parcels = dict()
+        streamline_point_parcels['points'] = []
+        streamline_point_parcels['parcels'] = []
+        for s in resampled_streamlines:
+            streamline_point_parcels['points'] += s.tolist()
+            streamline_point_parcels['parcels'] += np.arange(1, num_parcels + 1, 1).tolist()
 
     elif num_parcels == 1:
         print('Only 1 parcel requested, parcellation equals envelope.')

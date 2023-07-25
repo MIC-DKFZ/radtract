@@ -98,11 +98,11 @@ def tract_envelope(streamlines: nib.streamlines.array_sequence.ArraySequence,
     return tract_density(streamlines, reference_image, True, do_closing, out_image_filename)
 
 
-def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence,
-                  reference_image: nib.Nifti1Image,
-                  binary: bool = False,
-                  do_closing: bool = False,
-                  out_image_filename: str = None):
+def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # input streamlines
+                   reference_image: nib.Nifti1Image, # defines geometry of output image
+                   binary: bool = False, # if true, the output image will be a binary image with 1 for voxels that are part of the bundle and 0 outside
+                   do_closing: bool = False, # morphological closing of the binary image to remove holes
+                   out_image_filename: str = None): # if not None, the output image will be saved to this file
     """
     Calculate the tract density image for a set of streamlines using the true length of each streamline segment in each voxel.
     :param streamlines: input streamlines
@@ -117,17 +117,22 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence,
     else:
         print('Calculating tract density image')
 
+    # Load streamlines and reference image if they are file paths
     if type(streamlines) is str:
         streamlines = load_trk_streamlines(streamlines)
     if type(reference_image) is str:
         reference_image = nib.load(reference_image)
 
+    # Create an empty image with the same dimensions as the reference image
     image_data = np.copy(reference_image.get_fdata())
     image_data.fill(0)
     affine = reference_image.affine
     spacing = reference_image.header['pixdim'][1:4]
+
+    # Transform streamlines to voxel space
     streamlines = transform_streamlines(streamlines, np.linalg.inv(affine))
 
+    # Loop over each streamline and calculate the intersection with the image
     for s in streamlines:
         num_points = len(s)
         for j in range(num_points-1):
@@ -144,15 +149,21 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence,
                 else:
                     image_data[seg[0][0], seg[0][1], seg[0][2]] += seg[1]
 
+    # Perform morphological closing if binary and do_closing is True
     if binary and do_closing:
         image_data = binary_closing(image_data)
+
+    # Create Nifti1Image object with the image data
     if binary:
         image_data = image_data.astype('uint8')
         tdi = nib.Nifti1Image(image_data, header=reference_image.header, affine=reference_image.affine, dtype='uint8')
     else:
         tdi = nib.Nifti1Image(image_data, header=reference_image.header, affine=reference_image.affine)
+
+    # Save the image to file if out_image_filename is not None
     if out_image_filename is not None:
         nib.save(tdi, out_image_filename)
+
     print('done')
 
     return tdi
