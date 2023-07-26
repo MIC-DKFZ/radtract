@@ -1,5 +1,5 @@
 from radtract.features import load_features
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import LeaveOneOut
 from sklearn.feature_selection import SelectKBest
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
@@ -45,22 +45,24 @@ def classification_experiment(feature_files, targets):
     features_df = remove_correlated_features(features_df)
     features_df = normalize_features(features_df)
 
-    cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=0)
+    cv = LeaveOneOut()
 
     predictions = []
     ground_truth = []
-    for train_idxs, test_idxs in cv.split(features_df, targets):
 
-        x_train = features_df.iloc[train_idxs, :]
-        y_train = targets[train_idxs]
-        x_test = features_df.iloc[test_idxs, :]
-        y_test = targets[test_idxs]
+    for seed in range(10):
+        for train_idxs, test_idxs in cv.split(features_df, targets):
 
-        clf = RandomForestClassifier(n_estimators=500, random_state=42)
-        clf.fit(x_train, y_train)
-        y_pred = clf.predict_proba(x_test)
-        predictions.append(y_pred)
-        ground_truth.append(y_test)
+            x_train = features_df.iloc[train_idxs, :]
+            y_train = targets[train_idxs]
+            x_test = features_df.iloc[test_idxs, :]
+            y_test = targets[test_idxs]
+
+            clf = RandomForestClassifier(n_estimators=500, random_state=seed)
+            clf.fit(x_train, y_train)
+            y_pred = clf.predict_proba(x_test)
+            predictions.append(y_pred)
+            ground_truth.append(y_test)
 
     predictions = np.concatenate(predictions)
     ground_truth = np.concatenate(ground_truth)
