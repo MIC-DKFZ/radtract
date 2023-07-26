@@ -208,13 +208,16 @@ def calc_tractometry(point_label_file_name: str,
     return features
 
 
-def load_features(feature_file_names: list, feature_filter: str = None, expected_parcels: int = None):
+def load_features(feature_file_names: list, feature_filter: str = None, expected_parcels: int = None, verbose: bool = False, remove_map_substrings=[]):
     """
     Load features from files
     :param feature_file_names: list of feature file names
     :param feature_filter: only use columns containing this string
     :return: pandas dataframe of selected features, one row per file
     """
+
+    if verbose:
+        print('Loading features ...')
 
     out_df = None
     for feature_file_name in feature_file_names:
@@ -224,6 +227,17 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
 
         parcels = feature_df['label'].tolist()
         maps = feature_df['map'].tolist()
+
+        c = 0
+        for map in maps:
+            for substring in remove_map_substrings:
+                map = map.replace(substring, '')
+            map = map.replace('.nii.gz', '')
+            map = map.split('/')[-1]
+            maps[c] = map
+            parcels[c] = str(parcels[c]) + '_' + map
+            c += 1
+
         if expected_parcels is not None and len(parcels) != expected_parcels:
             raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:', feature_file_name)
 
@@ -237,20 +251,13 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
             print('ERROR: No features left after filtering with \'' + feature_filter + '\'', feature_file_name)
             exit(1)
 
-        # print('shape', len(feature_df.loc[:, feature_df.columns.str.contains('shape')].columns.tolist()))
-        # print('firstorder', len(feature_df.loc[:, feature_df.columns.str.contains('firstorder')].columns.tolist()) // 12)
-        # print('glcm', len(feature_df.loc[:, feature_df.columns.str.contains('glcm')].columns.tolist()) // 12)
-        # print('glrlm', len(feature_df.loc[:, feature_df.columns.str.contains('glrlm')].columns.tolist()) // 12)
-        # print('glszm', len(feature_df.loc[:, feature_df.columns.str.contains('glszm')].columns.tolist()) // 12)
-        # print('gldm', len(feature_df.loc[:, feature_df.columns.str.contains('gldm')].columns.tolist()) // 12)
-        # print('ngtdm', len(feature_df.loc[:, feature_df.columns.str.contains('ngtdm')].columns.tolist()) // 12)
-
         feature_df = feature_df[col_list]
 
         for feature in feature_df:
             for parcel in parcels:
                 feature_names.append(str(parcel) + '_' + str(feature))
 
+        # flatten feature matrix (column-major order) to match loop above
         features = feature_df.to_numpy()
         features = features.flatten(order='F')
 
@@ -259,10 +266,27 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
         else:
             out_df = pd.concat([out_df, pd.DataFrame([features], columns=feature_names)], axis=0)
 
+    if verbose and len(feature_file_names) > 0:
+        print('Loaded samples:', len(feature_file_names))
+        print('Stats per sample:')
+        print('Total number of features:', feature_df.shape[0] * feature_df.shape[1])
+        print('Maps:', list(np.unique(maps)))
+        print('Number of parcels:', feature_df.shape[0] // len(np.unique(maps)))
+        print('Number of features per map and parcel:', feature_df.shape[1])
+
+        print('Number of shape features:', len([col for col in feature_df if col.__contains__('shape')]))
+        print('Number of firstorder features:', len([col for col in feature_df if col.__contains__('firstorder')]))
+        print('Number of glcm features:', len([col for col in feature_df if col.__contains__('glcm')]))
+        print('Number of glrlm features:', len([col for col in feature_df if col.__contains__('glrlm')]))
+        print('Number of glszm features:', len([col for col in feature_df if col.__contains__('glszm')]))
+        print('Number of gldm features:', len([col for col in feature_df if col.__contains__('gldm')]))
+        print('Number of ngtdm features:', len([col for col in feature_df if col.__contains__('ngtdm')]))
+
     return out_df
 
 
 def main():
+
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
