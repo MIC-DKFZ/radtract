@@ -3,6 +3,7 @@ from sklearn.model_selection import LeaveOneOut
 from sklearn.feature_selection import SelectKBest
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
+from cmdint.Utils import ProgressBar
 
 
 def univariate_feature_selection(X_train, y_train, X_test, k):
@@ -45,11 +46,13 @@ def classification_experiment(feature_files, targets, remove_map_substrings=[], 
     features_df = remove_correlated_features(features_df)
     features_df = normalize_features(features_df)
 
+    print('Starting classification experiment')
     cv = LeaveOneOut()
 
     predictions = []
     ground_truth = []
     classifiers = []
+    bar = ProgressBar(len(feature_files) * 10)
     for seed in range(10):
         for train_idxs, test_idxs in cv.split(features_df, targets):
 
@@ -64,9 +67,11 @@ def classification_experiment(feature_files, targets, remove_map_substrings=[], 
             predictions.append(y_pred)
             ground_truth.append(y_test)
             classifiers.append(clf)
+            bar.next()
 
     predictions = np.concatenate(predictions)
     ground_truth = np.concatenate(ground_truth)
+    print('Done')
 
     return predictions, ground_truth, classifiers
 
