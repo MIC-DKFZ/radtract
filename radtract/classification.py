@@ -49,7 +49,7 @@ def classification_experiment(feature_files, targets):
 
     predictions = []
     ground_truth = []
-
+    classifiers = []
     for seed in range(10):
         for train_idxs, test_idxs in cv.split(features_df, targets):
 
@@ -63,11 +63,12 @@ def classification_experiment(feature_files, targets):
             y_pred = clf.predict_proba(x_test)
             predictions.append(y_pred)
             ground_truth.append(y_test)
+            classifiers.append(clf)
 
     predictions = np.concatenate(predictions)
     ground_truth = np.concatenate(ground_truth)
 
-    return predictions, ground_truth
+    return predictions, ground_truth, classifiers
 
 
 def main():
