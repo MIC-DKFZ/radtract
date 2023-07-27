@@ -11,22 +11,20 @@ import argparse
 import joblib
 from scipy.ndimage import map_coordinates
 from nibabel.affines import apply_affine
+import SimpleITK as sitk
 
 
-def map_check(map: str,
+def map_check(data: np.ndarray,
               extractor_settings: dict = None):
     '''
-    Check if the map is normalized to a range of 0-1. If not, print a warning.
     :param map: Path to the map
     :param extractor_settings: Settings for the pyradiomics feature extractor
     '''
-    img = nib.load(map)
-    data = img.get_fdata()
     data = np.nan_to_num(data)
     range = np.max(data) - np.min(data)
     robust_range = np.percentile(data, 99) - np.percentile(data, 1)
 
-    print('Checking map: ', map)
+    print('Checking map ...')
 
     if extractor_settings is not None and extractor_settings['normalize'] == 'true':
         print('Map is being normalized. Please make sure that your bin with is set accordingly.')
@@ -41,7 +39,8 @@ def map_check(map: str,
     if num_bins < 16 or num_bins > 128:
         print('Number of bins is not in the recommended range of 16-128.')
         print('Consider normalizing the map or adjust the binWidth in the pyrad.yaml parameter file.')
-        print('Suggestion for bin width (50 bins): ' + str(range / 50) + '.')
+        print('Suggestion for bin width (50 bins), based on the map range: ' + str(range / 50) + '.')
+        print('Suggestion for bin width (50 bins), based on the robust map range: ' + str(robust_range / 50) + '.')
     else:
         print('Map range is OK: ', range)
 
@@ -86,26 +85,54 @@ def calc_radiomics(parcellation_file_name: str,
     print('Pyradiomics settings:', extractor.settings)
     print('Enabled image types:', extractor.enabledImagetypes)
     print('Enables features:', extractor.enabledFeatures)
-    map_check(parameter_map_file_name, extractor.settings)
 
     if features is None:
         features = dict()
         features['map'] = []
         features['parcellation'] = []
-        features['label'] = []
+        features['parcel'] = []
 
-    parcellation_data = nib.load(parcellation_file_name).get_fdata().astype('int64')
+    map_sitk, parc_sitk = extractor.loadImage(parameter_map_file_name, parcellation_file_name)
+    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+
+    map_check(sitk.GetArrayFromImage(map_sitk), extractor.settings)
 
     labels = np.unique(parcellation_data)
     print('Found labels', labels)
     if num_parcels is not None:
         assert num_parcels == len(labels)-1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+    # get global features
+    print('pyradiomics generating global tract features')
+    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+    parcellation_data[parcellation_data > 0] = 1
+    env_sitk = sitk.GetImageFromArray(parcellation_data)
+    env_sitk.CopyInformation(parc_sitk)
+    feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=env_sitk)
+    print('pyradiomics formatting results ...')
+    if remove_paths:
+        features['map'].append(os.path.basename(parameter_map_file_name))
+        features['parcellation'].append(os.path.basename(parcellation_file_name))
+    else:
+        features['map'].append(parameter_map_file_name)
+        features['parcellation'].append(parcellation_file_name)
+    features['parcel'].append('GLOBAL')
+    for featureName in feature_vector.keys():
+        try:
+            val = float(feature_vector[featureName])
+            if featureName not in features.keys():
+                features[featureName] = []
+            features[featureName].append(val)
+        except Exception:
+            pass
+
+    # features per label
     for label in labels:
         label = int(label)
         if label == 0:
             continue
         print('pyradiomics processing label ' + str(label))
-        feature_vector = extractor.execute(imageFilepath=parameter_map_file_name, maskFilepath=parcellation_file_name, label=label)
+        feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=parc_sitk, label=label)
         print('pyradiomics formatting results ...')
         if remove_paths:
             features['map'].append(os.path.basename(parameter_map_file_name))
@@ -113,7 +140,7 @@ def calc_radiomics(parcellation_file_name: str,
         else:
             features['map'].append(parameter_map_file_name)
             features['parcellation'].append(parcellation_file_name)
-        features['label'].append(label)
+        features['parcel'].append('P' + str(label))
         for featureName in feature_vector.keys():
             try:
                 val = float(feature_vector[featureName])
@@ -153,7 +180,7 @@ def calc_tractometry(point_label_file_name: str,
         features = dict()
         features['map'] = []
         features['parcellation'] = []
-        features['label'] = []
+        features['parcel'] = []
         features['tractometry-mean'] = []
 
     streamline_point_parcels = joblib.load(point_label_file_name)
@@ -194,7 +221,7 @@ def calc_tractometry(point_label_file_name: str,
     for parcel in sorted(vals_per_parcel.keys()):
         features['map'].append(parameter_map_file_name)
         features['parcellation'].append(point_label_file_name)
-        features['label'].append(parcel)
+        features['parcel'].append('P' + str(parcel))
         features['tractometry-mean'].append(np.nanmean(vals_per_parcel[parcel]))
 
     if out_csv_file is not None:
@@ -213,6 +240,9 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
     Load features from files
     :param feature_file_names: list of feature file names
     :param feature_filter: only use columns containing this string
+    :param expected_parcels: check that each feature file contains this number of parcels
+    :param verbose: print stats
+    :param remove_map_substrings: remove these substrings from map names (map names are appended to feature names in flattened feature matrix), paths are removed by default
     :return: pandas dataframe of selected features, one row per file
     """
 
@@ -225,7 +255,7 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
 
         feature_df = pd.read_csv(feature_file_name)
 
-        parcels = feature_df['label'].tolist()
+        parcels = feature_df['parcel'].tolist()
         maps = feature_df['map'].tolist()
 
         c = 0
@@ -238,14 +268,15 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
             parcels[c] = str(parcels[c]) + '_' + map
             c += 1
 
-        if expected_parcels is not None and len(parcels) != expected_parcels:
+        if expected_parcels is not None and len(parcels) != expected_parcels + 1: # +1 accounts for tract-global features
             raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:', feature_file_name)
 
-        feature_df = feature_df.drop(columns=['map', 'parcellation', 'label'])
-
+        # remove columns that are not features
+        feature_df = feature_df.drop(columns=['map', 'parcellation', 'parcel'])
         col_list = [col for col in feature_df if not col.startswith('diagnostic')]
 
-        if feature_filter not in ['all', 'tractometry', None]:
+        # keep only feature columns that contain feature_filter string
+        if feature_filter is not None:
             col_list = [col for col in col_list if col.__contains__(feature_filter)]
         if len(col_list) == 0:
             print('ERROR: No features left after filtering with \'' + feature_filter + '\'', feature_file_name)
@@ -286,7 +317,6 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
 
 
 def main():
-
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
