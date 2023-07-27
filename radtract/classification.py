@@ -39,8 +39,8 @@ def normalize_features(features_df):
     return features_df
 
 
-def classification_experiment(feature_files, targets):
-    features_df = load_features(feature_files, verbose=True, remove_map_substrings=['Diffusion_MNI_tensors_'])
+def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1):
+    features_df = load_features(feature_files, verbose=True, remove_map_substrings=[])
     features_df = remove_low_variance_features(features_df)
     features_df = remove_correlated_features(features_df)
     features_df = normalize_features(features_df)
@@ -58,7 +58,7 @@ def classification_experiment(feature_files, targets):
             x_test = features_df.iloc[test_idxs, :]
             y_test = targets[test_idxs]
 
-            clf = RandomForestClassifier(n_estimators=500, random_state=seed)
+            clf = RandomForestClassifier(n_estimators=500, random_state=seed, n_jobs=n_jobs)
             clf.fit(x_train, y_train)
             y_pred = clf.predict_proba(x_test)
             predictions.append(y_pred)
