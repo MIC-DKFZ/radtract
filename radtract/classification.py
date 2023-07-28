@@ -37,13 +37,25 @@ def remove_correlated_features(features_df):
 def normalize_features(features_df):
     print('Normalizing features')
     features_df = (features_df - features_df.mean()) / features_df.std()
+    print('Done')
     return features_df
 
 
-def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1):
+def drop_global_features(features_df):
+    print('Dropping global features')
+    features_df = features_df.loc[:, ~features_df.columns.str.startswith('GLOBAL_')]
+    print('Num. features', features_df.shape[1])
+    return features_df
+
+
+def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, remove_low_variance=True, remove_correlated=True, drop_global=False):
     features_df = load_features(feature_files, verbose=True, remove_map_substrings=[])
-    features_df = remove_low_variance_features(features_df)
-    features_df = remove_correlated_features(features_df)
+    if drop_global:
+        features_df = drop_global_features(features_df)
+    if remove_low_variance:
+        features_df = remove_low_variance_features(features_df)
+    if remove_correlated:
+        features_df = remove_correlated_features(features_df)
     features_df = normalize_features(features_df)
 
     print('Starting classification experiment')
