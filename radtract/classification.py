@@ -1,20 +1,31 @@
 from radtract.features import load_features
 from sklearn.model_selection import LeaveOneOut
-from sklearn.feature_selection import SelectKBest
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import numpy as np
+import pandas as pd
 from cmdint.Utils import ProgressBar
 
 
 def univariate_feature_selection(X_train, y_train, X_test, k):
     # https://scikit-learn.org/stable/modules/feature_selection.html#univariate-feature-selection
+    if k <= 0 or k > X_train.shape[1]:
+        return X_train, X_test
+
     X_train_np = X_train.to_numpy()
     new_f = np.add(X_train_np, -np.min(X_train_np, axis=0))
-    selector = SelectKBest(k=k)
+
+    if np.issubdtype(y_train.dtype, np.integer):
+        selector = SelectKBest(k=k)
+    else:
+        print('Using f_regression')
+        selector = SelectKBest(k=k, score_func=f_regression)
+
     selector.fit_transform(new_f, y_train)
     mask = selector._get_support_mask()
     X_train = X_train.loc[:, mask]
     X_test = X_test.loc[:, mask]
+
     return X_train, X_test
 
 
@@ -27,6 +38,21 @@ def remove_low_variance_features(features_df):
 
 def remove_correlated_features(features_df):
     print('Removing correlated features')
+    if features_df.shape[1] > 10000:
+        parcels = features_df.columns.tolist()
+        i =  0
+        for i in range(len(parcels)):
+            parcels[i] = parcels[i].split('_')[0]
+        parcels = np.unique(parcels)
+        proc_dfs = []
+        for parcel in parcels:
+            df_temp = features_df.loc[:, features_df.columns.str.startswith(parcel)]
+            corr_matrix = np.triu(np.fabs(np.corrcoef(df_temp.to_numpy(), rowvar=False)), k=1)
+            to_drop = np.unique(np.where(corr_matrix > 0.95)[1])
+            df_temp = df_temp.drop(df_temp.columns[to_drop], axis=1)
+            proc_dfs.append(df_temp)
+        features_df = pd.concat(proc_dfs, axis=1)
+
     corr_matrix = np.triu(np.fabs(np.corrcoef(features_df.to_numpy(), rowvar=False)), k=1)
     to_drop = np.unique(np.where(corr_matrix > 0.95)[1])
     features_df = features_df.drop(features_df.columns[to_drop], axis=1)
@@ -41,22 +67,31 @@ def normalize_features(features_df):
     return features_df
 
 
-def drop_global_features(features_df):
-    print('Dropping global features')
-    features_df = features_df.loc[:, ~features_df.columns.str.startswith('GLOBAL_')]
+def drop_nan_features(features_df):
+    print('Dropping features with NaN values')
+    features_df = features_df.dropna(axis=1)
     print('Num. features', features_df.shape[1])
     return features_df
 
 
-def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, remove_low_variance=True, remove_correlated=True, drop_global=False):
-    features_df = load_features(feature_files, verbose=True, remove_map_substrings=[])
-    if drop_global:
-        features_df = drop_global_features(features_df)
+def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, select = [], drop = [], remove_low_variance=True, remove_correlated=True, kbest_features=0):
+
+    features_df = load_features(feature_files, verbose=True, remove_map_substrings=remove_map_substrings, select=select, drop=drop)
+
+    features_df = drop_nan_features(features_df)
+
     if remove_low_variance:
         features_df = remove_low_variance_features(features_df)
+
     if remove_correlated:
         features_df = remove_correlated_features(features_df)
+
     features_df = normalize_features(features_df)
+
+    is_classification = True
+    if not np.issubdtype(targets.dtype, np.integer):
+        print('Targets are not integer. Interpreting as regression problem.')
+        is_classification = False
 
     print('Starting classification experiment')
     cv = LeaveOneOut()
@@ -73,12 +108,18 @@ def classification_experiment(feature_files, targets, remove_map_substrings=[], 
             x_test = features_df.iloc[test_idxs, :]
             y_test = targets[test_idxs]
 
-            clf = RandomForestClassifier(n_estimators=500, random_state=seed, n_jobs=n_jobs)
-            clf.fit(x_train, y_train)
-            y_pred = clf.predict_proba(x_test)
+            if kbest_features > 0:
+                x_train, x_test = univariate_feature_selection(x_train, y_train, x_test, kbest_features)
+
+            if is_classification:
+                model = RandomForestClassifier(n_estimators=100, max_depth=4, random_state=seed, n_jobs=n_jobs)
+            else:
+                model = RandomForestRegressor(n_estimators=100, max_depth=4, random_state=seed, n_jobs=n_jobs)
+            model.fit(x_train, y_train)
+            y_pred = model.predict_proba(x_test)
             predictions.append(y_pred)
             ground_truth.append(y_test)
-            classifiers.append(clf)
+            classifiers.append(model)
             bar.next()
 
     predictions = np.concatenate(predictions)
