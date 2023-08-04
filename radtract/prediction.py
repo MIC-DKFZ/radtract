@@ -1,5 +1,5 @@
 from radtract.features import load_features
-from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import LeaveOneOut, StratifiedKFold
 from sklearn.feature_selection import SelectKBest, f_regression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import numpy as np
@@ -18,7 +18,6 @@ def univariate_feature_selection(X_train, y_train, X_test, k):
     if np.issubdtype(y_train.dtype, np.integer):
         selector = SelectKBest(k=k)
     else:
-        print('Using f_regression')
         selector = SelectKBest(k=k, score_func=f_regression)
 
     selector.fit_transform(new_f, y_train)
@@ -74,7 +73,20 @@ def drop_nan_features(features_df):
     return features_df
 
 
-def classification_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, select = [], drop = [], remove_low_variance=True, remove_correlated=True, kbest_features=0):
+def run_cv_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, select = [], drop = [], remove_low_variance=True, remove_correlated=True, kbest_features=0, folds=0):
+    '''
+    Runs a cross-validation experiment using random forest classifier/regressor.
+    :param feature_files: list of feature files
+    :param targets: numpy array of targets
+    :param remove_map_substrings: list of substrings to remove from feature names (feature names stored in the classifiers will be shorter)
+    :param n_jobs: number of jobs of the RandomForestClassifier/RandomForestRegressor
+    :param select: features containing any of these substrings will be included in the experiment
+    :param drop: features containing any of these substrings will be excluded from the experiment (after inclusion)
+    :param remove_low_variance: if True, features with variance < 1.0e-10 will be removed
+    :param remove_correlated: if True, correlated features will be removed (Pearson r > 0.95)
+    :param kbest_features: if > 0, univariate feature selection will be performed, keeping only the k best features
+    :param folds: number of folds for cross-validation (if <= 1, leave-one-out cross-validation will be performed)
+    '''
 
     features_df = load_features(feature_files, verbose=True, remove_map_substrings=remove_map_substrings, select=select, drop=drop)
 
@@ -92,9 +104,16 @@ def classification_experiment(feature_files, targets, remove_map_substrings=[], 
     if not np.issubdtype(targets.dtype, np.integer):
         print('Targets are not integer. Interpreting as regression problem.')
         is_classification = False
+        print('Starting regression experiment')
+    else:
+        print('Starting classification experiment')
 
-    print('Starting classification experiment')
-    cv = LeaveOneOut()
+    if folds > 1:
+        cv = StratifiedKFold(n_splits=folds)
+        print('Using {}-fold stratified cross-validation'.format(folds))
+    else:
+        cv = LeaveOneOut()
+        print('Using leave-one-out cross-validation')
 
     predictions = []
     ground_truth = []
@@ -116,7 +135,11 @@ def classification_experiment(feature_files, targets, remove_map_substrings=[], 
             else:
                 model = RandomForestRegressor(n_estimators=100, max_depth=4, random_state=seed, n_jobs=n_jobs)
             model.fit(x_train, y_train)
-            y_pred = model.predict_proba(x_test)
+
+            if is_classification:
+                y_pred = model.predict_proba(x_test)
+            else:
+                y_pred = model.predict(x_test)
             predictions.append(y_pred)
             ground_truth.append(y_test)
             classifiers.append(model)

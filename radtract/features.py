@@ -303,7 +303,7 @@ def load_features(feature_file_names: list, select=[], drop=[], expected_parcels
         if len(select) > 0:
             tmp_df = tmp_df.filter(regex='|'.join(select))
             if tmp_df.shape[1] == 0:
-                print('NO FEATURES LEFT AFTER SELCTION', select)
+                print('NO FEATURES LEFT AFTER SELECTION', select)
 
         # drop columns containing any of these strings
         if len(drop) > 0:
