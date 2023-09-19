@@ -12,6 +12,7 @@ import joblib
 from scipy.ndimage import map_coordinates
 from nibabel.affines import apply_affine
 import SimpleITK as sitk
+from cmdint.Utils import ProgressBar
 
 
 def map_check(data: np.ndarray,
@@ -100,7 +101,8 @@ def calc_radiomics(parcellation_file_name: str,
     labels = np.unique(parcellation_data)
     print('Found labels', labels)
     if num_parcels is not None:
-        assert num_parcels == len(labels)-1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+        assert num_parcels == len(
+            labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
 
     # get global features
     print('pyradiomics generating global tract features')
@@ -192,7 +194,8 @@ def calc_tractometry(point_label_file_name: str,
     vals_per_parcel = dict()
     points_per_parcel = dict()
     if num_parcels is not None:
-        assert num_parcels == np.unique(streamline_point_parcels['parcels']).shape[0], 'Number of parcels does not match number of labels in ' + point_label_file_name
+        assert num_parcels == np.unique(streamline_point_parcels['parcels']).shape[
+            0], 'Number of parcels does not match number of labels in ' + point_label_file_name
     for parcel, val, p in zip(streamline_point_parcels['parcels'], values, streamline_point_parcels['points']):
         if parcel not in vals_per_parcel.keys():
             vals_per_parcel[parcel] = []
@@ -235,11 +238,13 @@ def calc_tractometry(point_label_file_name: str,
     return features
 
 
-def load_features(feature_file_names: list, feature_filter: str = None, expected_parcels: int = None, verbose: bool = False, remove_map_substrings=[]):
+def load_features(feature_file_names: list, select=[], drop=[], expected_parcels: int = None, verbose: bool = False,
+                  remove_map_substrings=[]):
     """
     Load features from files
     :param feature_file_names: list of feature file names
-    :param feature_filter: only use columns containing this string
+    :param select: select features containing these substrings
+    :param drop: drop features containing these substrings
     :param expected_parcels: check that each feature file contains this number of parcels
     :param verbose: print stats
     :param remove_map_substrings: remove these substrings from map names (map names are appended to feature names in flattened feature matrix), paths are removed by default
@@ -248,12 +253,18 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
 
     if verbose:
         print('Loading features ...')
+        print('Select:', select)
+        print('Drop:', drop)
 
     out_df = None
+    bar = ProgressBar(len(feature_file_names))
     for feature_file_name in feature_file_names:
         feature_names = []
 
         feature_df = pd.read_csv(feature_file_name)
+        # check for nan values
+        if feature_df.isna().values.any():
+            print('Feature file contains NaN values:', feature_file_name)
 
         parcels = feature_df['parcel'].tolist()
         maps = feature_df['map'].tolist()
@@ -268,19 +279,14 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
             parcels[c] = str(parcels[c]) + '_' + map
             c += 1
 
-        if expected_parcels is not None and len(parcels) != expected_parcels + 1: # +1 accounts for tract-global features
-            raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:', feature_file_name)
+        if expected_parcels is not None and len(
+                parcels) != expected_parcels + 1:  # +1 accounts for tract-global features
+            raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:',
+                            feature_file_name)
 
         # remove columns that are not features
         feature_df = feature_df.drop(columns=['map', 'parcellation', 'parcel'])
         col_list = [col for col in feature_df if not col.startswith('diagnostic')]
-
-        # keep only feature columns that contain feature_filter string
-        if feature_filter is not None:
-            col_list = [col for col in col_list if col.__contains__(feature_filter)]
-        if len(col_list) == 0:
-            print('ERROR: No features left after filtering with \'' + feature_filter + '\'', feature_file_name)
-            exit(1)
 
         feature_df = feature_df[col_list]
 
@@ -292,31 +298,49 @@ def load_features(feature_file_names: list, feature_filter: str = None, expected
         features = feature_df.to_numpy()
         features = features.flatten(order='F')
 
+        tmp_df = pd.DataFrame([features], columns=feature_names)
+        # select columns containing any of these strings
+        if len(select) > 0:
+            tmp_df = tmp_df.filter(regex='|'.join(select))
+            if tmp_df.shape[1] == 0:
+                print('NO FEATURES LEFT AFTER SELECTION', select)
+
+        # drop columns containing any of these strings
+        if len(drop) > 0:
+            tmp_df = tmp_df.drop(tmp_df.filter(regex='|'.join(drop)).columns, axis=1)
+            if tmp_df.shape[1] == 0:
+                print('NO FEATURES LEFT AFTER DROP', drop)
+
+        feature_file_names = tmp_df.columns.tolist()
+
         if out_df is None:
-            out_df = pd.DataFrame([features], columns=feature_names)
+            out_df = tmp_df
         else:
-            out_df = pd.concat([out_df, pd.DataFrame([features], columns=feature_names)], axis=0)
+            out_df = pd.concat([out_df, tmp_df], axis=0)
+
+        bar.next()
 
     if verbose and len(feature_file_names) > 0:
-        print('Loaded samples:', len(feature_file_names))
+        print('Loaded samples:', out_df.shape[0])
         print('Stats per sample:')
-        print('Total number of features:', feature_df.shape[0] * feature_df.shape[1])
+        print('Total number of features:', out_df.shape[1])
         print('Maps:', list(np.unique(maps)))
-        print('Number of parcels:', feature_df.shape[0] // len(np.unique(maps)))
-        print('Number of features per map and parcel:', feature_df.shape[1])
+        # print('Number of parcels:', out_df.shape[0] // len(np.unique(maps)))
+        # print('Number of features per map and parcel:', out_df.shape[1])
 
-        print('Number of shape features:', len([col for col in feature_df if col.__contains__('shape')]))
-        print('Number of firstorder features:', len([col for col in feature_df if col.__contains__('firstorder')]))
-        print('Number of glcm features:', len([col for col in feature_df if col.__contains__('glcm')]))
-        print('Number of glrlm features:', len([col for col in feature_df if col.__contains__('glrlm')]))
-        print('Number of glszm features:', len([col for col in feature_df if col.__contains__('glszm')]))
-        print('Number of gldm features:', len([col for col in feature_df if col.__contains__('gldm')]))
-        print('Number of ngtdm features:', len([col for col in feature_df if col.__contains__('ngtdm')]))
+        print('Number of shape features:', len([col for col in out_df if col.__contains__('shape')]))
+        print('Number of firstorder features:', len([col for col in out_df if col.__contains__('firstorder')]))
+        print('Number of glcm features:', len([col for col in out_df if col.__contains__('glcm')]))
+        print('Number of glrlm features:', len([col for col in out_df if col.__contains__('glrlm')]))
+        print('Number of glszm features:', len([col for col in out_df if col.__contains__('glszm')]))
+        print('Number of gldm features:', len([col for col in out_df if col.__contains__('gldm')]))
+        print('Number of ngtdm features:', len([col for col in out_df if col.__contains__('ngtdm')]))
 
     return out_df
 
 
 def main():
+
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
