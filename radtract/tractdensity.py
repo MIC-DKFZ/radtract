@@ -9,6 +9,7 @@ from dipy.tracking.streamline import transform_streamlines
 from radtract.parcellation import load_trk_streamlines
 from skimage.morphology import binary_closing
 import argparse
+import sys
 
 
 def intersect_image(spacing, si, ei, sf, ef):
@@ -170,6 +171,11 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # i
 
 
 def main():
+
+    if len(sys.argv) == 1:
+        print('type \'radtract_features -h\' for help')
+        return
+    
     parser = argparse.ArgumentParser(description='RadTract Tract Density Image')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
     parser.add_argument('--reference', type=str, help='Reference image file')
