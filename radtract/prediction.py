@@ -154,11 +154,3 @@ def run_cv_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-
     print('Done')
 
     return predictions, ground_truth, classifiers
-
-
-def main():
-    pass
-
-
-if __name__ == '__main__':
-    main()

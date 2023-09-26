@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import nibabel as nib
-import numpy.linalg
 from nibabel.affines import apply_affine
 from skimage.morphology import binary_dilation, binary_closing
 from sklearn.svm import SVC
@@ -19,6 +18,7 @@ import os
 import argparse
 import joblib
 import multiprocessing
+import sys
 
 
 def load_trk_streamlines(filename: str):
@@ -518,6 +518,11 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
 
 def main():
+
+    if len(sys.argv) == 1:
+        print('type \'radtract_parcellate -h\' for help')
+        return
+
     parser = argparse.ArgumentParser(description='RadTract Tract Parcellation')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
     parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)

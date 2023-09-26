@@ -13,6 +13,7 @@ from scipy.ndimage import map_coordinates
 from nibabel.affines import apply_affine
 import SimpleITK as sitk
 from cmdint.Utils import ProgressBar
+import sys
 
 
 def map_check(data: np.ndarray,
@@ -340,6 +341,10 @@ def load_features(feature_file_names: list, select=[], drop=[], expected_parcels
 
 
 def main():
+
+    if len(sys.argv) == 1:
+        print('type \'radtract_features -h\' for help')
+        return
 
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
