@@ -1,3 +1,7 @@
+# Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from radtract.features import load_features
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold
 from sklearn.feature_selection import SelectKBest, f_regression
