@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radtract"
-version = "0.1.8"
+version = "0.1.9"
 authors = [
   { name="Peter Neher", email="p.neher@dkfz-heidelberg.de" },
 ]
