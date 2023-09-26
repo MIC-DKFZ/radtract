@@ -50,9 +50,9 @@ test_run_parcellate:
  script:
    - radtract_parcellate --streamlines tests/test_data/test_tract.trk --envelope tests/test_data/test_tract_envelope.nii.gz --start tests/test_data/test_tract_b.nii.gz --num_parcels 5 --output tests/test_results/hyperplane_parcellation_command.nii.gz
 
-#test_run_features:
-#  extends: test_run_parcellate
-#  script:
-#    - radtract_features --parcellation test/test_results/hyperplane_parcellation_command.nii.gz --map tests/test_data/test_map.nii.gz --output test/test_results/hyperplane_parcellation_command.csv
-#  dependencies:
-#    - test_run_parcellate
+test_run_features:
+ extends: test_run_parcellate
+ script:
+   - radtract_features --parcellation tests/test_results/hyperplane_parcellation_command.nii.gz --map tests/test_data/test_map.nii.gz --output tests/test_results/hyperplane_parcellation_command.csv
+ dependencies:
+   - test_run_parcellate

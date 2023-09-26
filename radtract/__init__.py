@@ -1,4 +1,4 @@
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 __author__ = 'Peter Neher'
 __email__ = 'p.neher@dkfz.de'
 __copyright__ = "Copyright 2023, German Cancer Research Center (DKFZ), Division of Medical Image Computing"
