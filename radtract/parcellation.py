@@ -19,6 +19,9 @@ import argparse
 import joblib
 import multiprocessing
 import sys
+import fury
+from fury.io import save_polydata
+from fury.utils import lines_to_vtk_polydata, numpy_to_vtk_colors
 
 
 def load_trk_streamlines(filename: str):
@@ -351,6 +354,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     reduced_streamlines = None
     svc = None
     streamline_point_parcels = None
+    colors = None
 
     if num_parcels > 1 and parcellation_type == 'hyperplane':
         print('Reducing input bundle')
@@ -465,11 +469,11 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     elif num_parcels > 1 and parcellation_type == 'static_resampling' and streamline_space:
         print('Creating static resampling-based parcellation')
         envelope_data = None
-        resampled_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels)
+        oriented_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels)
         streamline_point_parcels = dict()
         streamline_point_parcels['points'] = []
         streamline_point_parcels['parcels'] = []
-        for s in resampled_streamlines:
+        for s in oriented_streamlines:
             streamline_point_parcels['points'] += s.tolist()
             streamline_point_parcels['parcels'] += np.arange(1, num_parcels + 1, 1).tolist()
 
@@ -512,7 +516,23 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             nib.save(parcellation, out_parcellation_filename)
     elif streamline_point_parcels is not None:
         parcellation = streamline_point_parcels
-        joblib.dump(parcellation, out_parcellation_filename.replace('.nii.gz', '.pkl'))
+        out_parcellation_filename = out_parcellation_filename.replace('.nii.gz', '.pkl')
+        joblib.dump(parcellation, out_parcellation_filename)
+
+        # save colored fibers
+        colors = []
+        lut_cmap = fury.colormap.distinguishable_colormap(nb_colors=num_parcels)
+        for i in range(len(streamline_point_parcels['points'])):
+            p = streamline_point_parcels['parcels'][i]
+            color = lut_cmap[p-1]*255.0
+            color = np.append(color, 255.0)
+            colors.append(color)
+
+        polydata, _ = lines_to_vtk_polydata(oriented_streamlines)
+        vtk_colors = numpy_to_vtk_colors(colors)
+        vtk_colors.SetName("FIBER_COLORS")
+        polydata.GetPointData().AddArray(vtk_colors)
+        save_polydata(polydata=polydata, file_name=out_parcellation_filename.replace('.pkl', '_colored.fib'), binary=True)
 
     return parcellation, reference_streamline, reduced_streamlines, svc
 
@@ -528,7 +548,7 @@ def main():
     parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
     parser.add_argument('--start', type=str, help='Input binary start region file', default=None)
     parser.add_argument('--num_parcels', type=int, help='Number of parcels (0 for automatic estimation)', default=None)
-    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\' or \'centerline\')', default='hyperplane')
+    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\', \'centerline\', or \'static_resampling\')', default='hyperplane')
     parser.add_argument('--output', type=str, help='Output parcellation image file')
     args = parser.parse_args()
 

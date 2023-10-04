@@ -31,6 +31,7 @@ dependencies = [
     'dipy',
     'pyradiomics',
     'cmdint',
+    'fury',
 ]
 license = { file="LICENSES/Apache-2.0.txt" }
 requires-python = ">=3.8"
