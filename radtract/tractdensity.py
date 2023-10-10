@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import vtk
 from dipy.tracking.streamline import transform_streamlines
-from radtract.parcellation import load_trk_streamlines
+from radtract.utils import load_trk_streamlines
 from skimage.morphology import binary_closing
 import argparse
 import sys
@@ -173,7 +173,7 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # i
 def main():
 
     if len(sys.argv) == 1:
-        print('type \'radtract_features -h\' for help')
+        print('type \'radtract_tdi -h\' for help')
         return
     
     parser = argparse.ArgumentParser(description='RadTract Tract Density Image')

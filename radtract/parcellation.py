@@ -11,7 +11,6 @@ from dipy.segment.metric import AveragePointwiseEuclideanMetric
 from dipy.segment.featurespeed import ResampleFeature
 import numpy as np
 from dipy.tracking.streamline import transform_streamlines
-from dipy.io.streamline import load_trk
 from dipy.align.reslice import reslice
 from scipy.spatial import cKDTree
 import os
@@ -19,20 +18,10 @@ import argparse
 import joblib
 import multiprocessing
 import sys
-import fury
-from fury.io import save_polydata
-from fury.utils import lines_to_vtk_polydata, numpy_to_vtk_colors
-
-
-def load_trk_streamlines(filename: str):
-    """
-    Convenience function to load streamlines from a trk file
-    :param filename: filename of trk file
-    :return: streamlines in dipy format
-    """
-    fib = load_trk(filename, "same", bbox_valid_check=False)
-    streamlines = fib.streamlines
-    return streamlines
+from radtract.tractdensity import tract_envelope
+from radtract.utils import load_trk_streamlines, save_as_vtk_fib, save_trk_streamlines
+from fury.colormap import distinguishable_colormap
+import joblib
 
 
 def estimate_num_parcels(streamlines: nib.streamlines.array_sequence.ArraySequence,
@@ -266,7 +255,7 @@ def predict_points(argstuple):
 
 
 def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
-                     binary_envelope: nib.Nifti1Image,
+                     binary_envelope: nib.Nifti1Image = None,
                      num_parcels: int = None,
                      parcellation_type: str = 'hyperplane',
                      start_region: nib.Nifti1Image = None,
@@ -276,13 +265,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      out_parcellation_filename: str = None,
                      new_voxel_size: tuple = None,
                      postprocess: bool = False,
-                     streamline_space: bool = False):
+                     streamline_space: bool = False,
+                     save_intermediate_files: bool = False):
     """
     Parcellate input streamlines into num_parcels parcels.
     :param streamlines: input streamlines in dipy format
     :param binary_envelope: binary mask defining area to parcellate, should cover input streamlines
     :param num_parcels: desired number of parcels
-    :param parcellation_type: 'hyperplane' or 'centerline', 'hyperplane' is the improved approach published in the RadTract paper [REF]
+    :param parcellation_type: 'hyperplane', 'centerline', or 'static'. 'hyperplane' is the improved approach published in the RadTract paper [REF]
     :param start_region: binary mask defining the start region of the streamlines used for reorientation. if not set, reference streamline is used for reorientation.
     :param reference_streamline: reference streamline for reorientation. only used if start_region is not set. if both are not set, the tract centerline is used as reference for reorientation.
     :param dilate_envelope: dilate binary envelope to obtain a slightly bigger parcellation. this can be useful for visualization purposes.
@@ -291,11 +281,19 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     :param new_voxel_size: resample binary envelope to this voxel size before parcellation
     :param postprocess: remove outliers by voting label of each voxel by label of its 26 neighbors
     :param streamline_space: if set, the parcellation is performed in streamline space instead of voxel space. The output is not a parcellation image but a dict containing the streamline points and the parcel label for each point.
+    :param save_intermediate_files: if set, intermediate files, such as the binary envelope, are saved to disk
+
     :return: parcellation: parcellation as image containing the parcel label for each nonzero voxel of the streamline envelope
     :return: reference_streamline: reference streamline used in the parcellation process (none if start_region is set and reference_streamline is not set)
     :return: reduced_streamlines: reduced number of streamlines used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
     :return: svc: support vector classifier used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
     """
+    out_parcellation_filename.replace('.pkl', '.nii.gz')
+    if not out_parcellation_filename.endswith('.nii.gz'):
+        out_parcellation_filename += '.nii.gz'
+
+    if binary_envelope is None and start_region is None:
+        raise Exception('Either binary_envelope or start_region must be set!')
 
     # load data if inputs are filenames
     if type(streamlines) is str and os.path.isfile(streamlines):
@@ -305,11 +303,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     if type(start_region) is str and os.path.isfile(start_region):
         start_region = nib.load(start_region)
 
+    if binary_envelope is None and type(start_region) is nib.Nifti1Image:
+        binary_envelope = tract_envelope(streamlines, start_region)
+
     assert type(streamlines) is nib.streamlines.array_sequence.ArraySequence, 'Streamlines must be in dipy format!'
     assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
     if start_region is not None:
         assert type(start_region) is nib.Nifti1Image, 'Start region must be Nifti1Image!'
-    assert parcellation_type in ['hyperplane', 'centerline', 'static_resampling'], 'Parcellation type must be hyperplane or centerline!'
+    assert parcellation_type in ['hyperplane', 'centerline', 'static'], 'Parcellation type must be hyperplane or centerline!'
 
     print('Input number of fibers:', len(streamlines))
     assert len(streamlines) > 0, 'No streamlines found!'
@@ -466,7 +467,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         print('Finished centerline-based parcellation')
 
-    elif num_parcels > 1 and parcellation_type == 'static_resampling' and streamline_space:
+    elif num_parcels > 1 and parcellation_type == 'static' and streamline_space:
         print('Creating static resampling-based parcellation')
         envelope_data = None
         oriented_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels)
@@ -501,6 +502,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             data_temp[x, y, z] = max_count_label
         envelope_data = data_temp
 
+    lut_cmap = distinguishable_colormap(nb_colors=num_parcels)
     if envelope_data is not None:
 
         assigned_parcels = np.unique(envelope_data)
@@ -514,25 +516,56 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         if out_parcellation_filename is not None:
             print('Saving ' + parcellation_type + '-based parcellation to ' + out_parcellation_filename)
             nib.save(parcellation, out_parcellation_filename)
+
+        if save_intermediate_files:
+            # create colors list
+            colors = []
+            oriented_streamlines_voxelspace = transform_streamlines(oriented_streamlines, np.linalg.inv(affine))
+            for s in oriented_streamlines_voxelspace:
+                num_points = len(s)
+                for j in range(num_points):
+                    p_cont = s[j]
+                    p = np.round(p_cont).astype('int64')
+                    label = envelope_data[p[0], p[1], p[2]]
+                    color = lut_cmap[label-1]*255.0
+                    color = np.append(color, 255.0)
+                    colors.append(color)
+
     elif streamline_point_parcels is not None:
         parcellation = streamline_point_parcels
-        out_parcellation_filename = out_parcellation_filename.replace('.nii.gz', '.pkl')
-        joblib.dump(parcellation, out_parcellation_filename)
+        joblib.dump(parcellation, out_parcellation_filename.replace('.nii.gz', '.pkl'))
 
-        # save colored fibers
-        colors = []
-        lut_cmap = fury.colormap.distinguishable_colormap(nb_colors=num_parcels)
-        for i in range(len(streamline_point_parcels['points'])):
-            p = streamline_point_parcels['parcels'][i]
-            color = lut_cmap[p-1]*255.0
-            color = np.append(color, 255.0)
-            colors.append(color)
+        if save_intermediate_files:
+            # create colors list
+            colors = []
+            for i in range(len(streamline_point_parcels['points'])):
+                p = streamline_point_parcels['parcels'][i]
+                color = lut_cmap[p-1]*255.0
+                color = np.append(color, 255.0)
+                colors.append(color)
 
-        polydata, _ = lines_to_vtk_polydata(oriented_streamlines)
-        vtk_colors = numpy_to_vtk_colors(colors)
-        vtk_colors.SetName("FIBER_COLORS")
-        polydata.GetPointData().AddArray(vtk_colors)
-        save_polydata(polydata=polydata, file_name=out_parcellation_filename.replace('.pkl', '_colored.fib'), binary=True)
+
+    if save_intermediate_files:
+
+        if envelope_data is not None:
+            new_envelope_data = np.zeros(envelope_data.shape, dtype='uint8')
+            new_envelope_data[np.where(envelope_data > 0)] = 1
+            new_envelope = nib.Nifti1Image(new_envelope_data, affine=binary_envelope.affine)
+            nib.save(new_envelope, out_parcellation_filename.replace('.nii.gz', '_envelope.nii.gz'))
+
+        if reference_streamline is not None:
+            save_trk_streamlines(streamlines=[reference_streamline], filename=out_parcellation_filename.replace('.nii.gz', '_reference_streamline.trk'), reference_image=binary_envelope)
+
+        if reduced_streamlines is not None:
+            save_trk_streamlines(streamlines=reduced_streamlines, filename=out_parcellation_filename.replace('.nii.gz', '_reduced_streamlines.trk'), reference_image=binary_envelope)
+
+        if colors is not None:
+            colors_file_name = out_parcellation_filename.replace('.nii.gz', '_colored.fib')
+            save_as_vtk_fib(streamlines=oriented_streamlines, out_filename=colors_file_name, colors=colors)
+
+        if svc is not None:
+            joblib.dump(svc, out_parcellation_filename.replace('.nii.gz', '_svc.pkl'))
+        
 
     return parcellation, reference_streamline, reduced_streamlines, svc
 
@@ -548,8 +581,11 @@ def main():
     parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
     parser.add_argument('--start', type=str, help='Input binary start region file', default=None)
     parser.add_argument('--num_parcels', type=int, help='Number of parcels (0 for automatic estimation)', default=None)
-    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\', \'centerline\', or \'static_resampling\')', default='hyperplane')
+    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\', \'centerline\', or \'static\')', default='hyperplane')
+    parser.add_argument('--save_intermediate_files', type=bool, help='Save intermediate files', default=False)
+    parser.add_argument('--streamline_space', type=bool, help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label.', default=False)
     parser.add_argument('--output', type=str, help='Output parcellation image file')
+    
     args = parser.parse_args()
 
     parcellate_tract(streamlines=args.streamlines,
@@ -557,6 +593,8 @@ def main():
                      binary_envelope=args.envelope,
                      num_parcels=args.num_parcels,
                      start_region=args.start,
+                     save_intermediate_files=args.save_intermediate_files,
+                     streamline_space=args.streamline_space,
                      out_parcellation_filename=args.output)
 
 
