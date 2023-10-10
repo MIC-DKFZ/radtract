@@ -171,10 +171,6 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # i
 
 
 def main():
-
-    if len(sys.argv) == 1:
-        print('type \'radtract_tdi -h\' for help')
-        return
     
     parser = argparse.ArgumentParser(description='RadTract Tract Density Image')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
@@ -182,6 +178,11 @@ def main():
     parser.add_argument('--binary', type=bool, help='Output binary envelope instead of tract density image', default=False)
     parser.add_argument('--do_closing', type=bool, help='Perform morphological closing of the envelope to remove holes', default=False)
     parser.add_argument('--output', type=str, help='Output tdi/envelope image file')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+    
     args = parser.parse_args()
 
     streamlines = load_trk_streamlines(args.streamlines)

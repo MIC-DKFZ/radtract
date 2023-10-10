@@ -572,10 +572,6 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
 def main():
 
-    if len(sys.argv) == 1:
-        print('type \'radtract_parcellate -h\' for help')
-        return
-
     parser = argparse.ArgumentParser(description='RadTract Tract Parcellation')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
     parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
@@ -585,7 +581,11 @@ def main():
     parser.add_argument('--save_intermediate_files', type=bool, help='Save intermediate files', default=False)
     parser.add_argument('--streamline_space', type=bool, help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label.', default=False)
     parser.add_argument('--output', type=str, help='Output parcellation image file')
-    
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+
     args = parser.parse_args()
 
     parcellate_tract(streamlines=args.streamlines,

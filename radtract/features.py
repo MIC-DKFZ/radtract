@@ -342,14 +342,15 @@ def load_features(feature_file_names: list, select=[], drop=[], expected_parcels
 
 def main():
 
-    if len(sys.argv) == 1:
-        print('type \'radtract_features -h\' for help')
-        return
-
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
     parser.add_argument('--output', type=str, help='Output feature file (.csv)')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+    
     args = parser.parse_args()
 
     calc_radiomics(parcellation_file_name=args.parcellation,
