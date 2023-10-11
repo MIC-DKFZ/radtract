@@ -345,6 +345,7 @@ def main():
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
+    parser.add_argument('--pyrad_params', type=str, help='Pyradiomics parameter file (e.g. pyrad.yaml)', default=None)
     parser.add_argument('--output', type=str, help='Output feature file (.csv)')
 
     if len(sys.argv) == 1:
@@ -355,7 +356,8 @@ def main():
 
     calc_radiomics(parcellation_file_name=args.parcellation,
                    parameter_map_file_name=args.map,
-                   out_csv_file=args.output
+                   pyrad_params=args.pyrad_params,
+                   out_csv_file=args.output,
                    )
 
 

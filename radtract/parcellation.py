@@ -256,6 +256,7 @@ def predict_points(argstuple):
 
 def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      binary_envelope: nib.Nifti1Image = None,
+                     reference_image: nib.Nifti1Image = None,
                      num_parcels: int = None,
                      parcellation_type: str = 'hyperplane',
                      start_region: nib.Nifti1Image = None,
@@ -271,6 +272,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     Parcellate input streamlines into num_parcels parcels.
     :param streamlines: input streamlines in dipy format
     :param binary_envelope: binary mask defining area to parcellate, should cover input streamlines
+    :param reference_image: reference image used to automatically calulate binary envelope if binary_envelope is not set. if reference_image is not set, but start_region is set, the start_region is used as reference image for the envelope calculation.
     :param num_parcels: desired number of parcels
     :param parcellation_type: 'hyperplane', 'centerline', or 'static'. 'hyperplane' is the improved approach published in the RadTract paper [REF]
     :param start_region: binary mask defining the start region of the streamlines used for reorientation. if not set, reference streamline is used for reorientation.
@@ -292,19 +294,28 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     if not out_parcellation_filename.endswith('.nii.gz'):
         out_parcellation_filename += '.nii.gz'
 
-    if binary_envelope is None and start_region is None:
-        raise Exception('Either binary_envelope or start_region must be set!')
+    if binary_envelope is None and start_region is None and reference_image is None:
+        raise Exception('Either binary_envelope, start_region or reference_image must be set!')
 
     # load data if inputs are filenames
     if type(streamlines) is str and os.path.isfile(streamlines):
         streamlines = load_trk_streamlines(streamlines)
     if type(binary_envelope) is str and os.path.isfile(binary_envelope):
         binary_envelope = nib.load(binary_envelope)
+    if type(reference_image) is str and os.path.isfile(reference_image):
+        reference_image = nib.load(reference_image)
     if type(start_region) is str and os.path.isfile(start_region):
         start_region = nib.load(start_region)
 
-    if binary_envelope is None and type(start_region) is nib.Nifti1Image:
-        binary_envelope = tract_envelope(streamlines, start_region)
+    if binary_envelope is None:
+        if type(start_region) is nib.Nifti1Image:
+            print('Creating binary envelope from start region')
+            binary_envelope = tract_envelope(streamlines, start_region)
+        elif type(reference_image) is nib.Nifti1Image:
+            print('Creating binary envelope from reference image')
+            binary_envelope = tract_envelope(streamlines, reference_image)
+    else:
+        print('Using provided binary envelope')
 
     assert type(streamlines) is nib.streamlines.array_sequence.ArraySequence, 'Streamlines must be in dipy format!'
     assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
@@ -575,6 +586,7 @@ def main():
     parser = argparse.ArgumentParser(description='RadTract Tract Parcellation')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
     parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
+    parser.add_argument('--reference', type=str, help='Reference image used to automatically calulate binary envelope if the envelope is not set. If reference is not set, but start is set, start is used as reference image for the envelope calculation.', default=None)
     parser.add_argument('--start', type=str, help='Input binary start region file', default=None)
     parser.add_argument('--num_parcels', type=int, help='Number of parcels (0 for automatic estimation)', default=None)
     parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\', \'centerline\', or \'static\')', default='hyperplane')
@@ -591,6 +603,7 @@ def main():
     parcellate_tract(streamlines=args.streamlines,
                      parcellation_type=args.type,
                      binary_envelope=args.envelope,
+                     reference_image=args.reference,
                      num_parcels=args.num_parcels,
                      start_region=args.start,
                      save_intermediate_files=args.save_intermediate_files,

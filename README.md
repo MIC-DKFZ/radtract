@@ -44,20 +44,13 @@ See `.gitlab-ci.yml` for the currently tested configurations.
 
 Installation should complete within a few seconds.
 
-## Example usage
+## Examples
 
-### Python interface
-See `tests\test_radtract.py` for examples of how to use RadTract in your python code. Test data is included in `tests\test_data`.
+A complete pipeline example can be found in example.ipynb 
 
-### Command line interface
-RadTract can be used from the command line. Available commands:
+Further examples can be found in the RadTract test script `tests\test_radtract.py`. Test data is included in `tests\test_data`.
 
-1. `radtract_tdi`: Calculates tract density images (TDI) as well as binary tract envelopes from a tractogram and a reference image.
-2. `radtract_parcellate`: Calculates tract parcellation of a tract.
-3. `radtract_features`: Calculates RadTract features of a parameter map, e.g. FA, using a given tract parcellation.
-
-Type `radtract_XYZ -h` for a list of available options.
 
 ### Expected runtimes
 
-All tests should complete within a couple of minutes on a standard desktop computer.
+RadTract parcellation and feature calculation should complete within a couple of minutes on a standard desktop computer.
