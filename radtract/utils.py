@@ -1,3 +1,7 @@
+# Copyright © 2023 German Cancer Research Center (DKFZ), Division of Medical Image Computing
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from dipy.io.streamline import load_trk, save_trk
 from fury.io import save_polydata
 from fury.utils import lines_to_vtk_polydata, numpy_to_vtk_colors
