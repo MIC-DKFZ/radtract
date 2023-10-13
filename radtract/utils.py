@@ -38,3 +38,9 @@ def save_as_vtk_fib(streamlines, out_filename, colors=None):
     save_polydata(polydata=polydata, file_name=out_filename, binary=True)
 
 
+def main():
+    pass
+
+
+if __name__ == '__main__':
+    main()

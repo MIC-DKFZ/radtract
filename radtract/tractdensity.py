@@ -175,8 +175,8 @@ def main():
     parser = argparse.ArgumentParser(description='RadTract Tract Density Image')
     parser.add_argument('--streamlines', type=str, help='Input streamline file')
     parser.add_argument('--reference', type=str, help='Reference image file')
-    parser.add_argument('--binary', type=bool, help='Output binary envelope instead of tract density image', default=False)
-    parser.add_argument('--do_closing', type=bool, help='Perform morphological closing of the envelope to remove holes', default=False)
+    parser.add_argument('--binary', help='Output binary envelope instead of tract density image', action='store_true')
+    parser.add_argument('--do_closing', help='Perform morphological closing of the envelope to remove holes', action='store_true')
     parser.add_argument('--output', type=str, help='Output tdi/envelope image file')
 
     if len(sys.argv) == 1:

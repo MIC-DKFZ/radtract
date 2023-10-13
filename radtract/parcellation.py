@@ -321,15 +321,13 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
     if start_region is not None:
         assert type(start_region) is nib.Nifti1Image, 'Start region must be Nifti1Image!'
-    assert parcellation_type in ['hyperplane', 'centerline', 'static'], 'Parcellation type must be hyperplane or centerline!'
+    assert parcellation_type in ['hyperplane', 'centerline', 'static'], 'Parcellation type must be hyperplane, centerline or static!'
 
     print('Input number of fibers:', len(streamlines))
     assert len(streamlines) > 0, 'No streamlines found!'
 
-    if num_parcels is None:
+    if num_parcels is None or num_parcels < 1:
         num_parcels = estimate_num_parcels(streamlines=streamlines, reference_image=binary_envelope)
-
-    assert num_parcels > 0, 'Number of parcels must be greater than 0!'
 
     feature = ResampleFeature(nb_points=num_parcels)
     metric = AveragePointwiseEuclideanMetric(feature)
@@ -478,7 +476,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         print('Finished centerline-based parcellation')
 
-    elif num_parcels > 1 and parcellation_type == 'static' and streamline_space:
+    elif num_parcels > 1 and parcellation_type == 'static':
+        streamline_space = True
         print('Creating static resampling-based parcellation')
         envelope_data = None
         oriented_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels)
@@ -584,14 +583,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 def main():
 
     parser = argparse.ArgumentParser(description='RadTract Tract Parcellation')
-    parser.add_argument('--streamlines', type=str, help='Input streamline file')
-    parser.add_argument('--envelope', type=str, help='Input streamline envelope file', default=None)
-    parser.add_argument('--reference', type=str, help='Reference image used to automatically calulate binary envelope if the envelope is not set. If reference is not set, but start is set, start is used as reference image for the envelope calculation.', default=None)
-    parser.add_argument('--start', type=str, help='Input binary start region file', default=None)
-    parser.add_argument('--num_parcels', type=int, help='Number of parcels (0 for automatic estimation)', default=None)
-    parser.add_argument('--type', type=str, help='type of parcellation (\'hyperplane\', \'centerline\', or \'static\')', default='hyperplane')
-    parser.add_argument('--save_intermediate_files', type=bool, help='Save intermediate files', default=False)
-    parser.add_argument('--streamline_space', type=bool, help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label.', default=False)
+    parser.add_argument('--streamlines', type=str, help='Input streamline file (.trk)')
+    parser.add_argument('--envelope', type=str, help='Input streamline envelope file. The envelope defines the area of the parcellation. If no envelope is set, the envelope is automatically calculated using --reference or --start as reference image. Either the start region, the reference image or the actual envelope needs to be provided.', default=None)
+    parser.add_argument('--reference', type=str, help='Reference image used to automatically calulate binary envelope if the envelope is not set. If reference is not set, but --start is specified, the start region is used as reference image for the envelope calculation.', default=None)
+    parser.add_argument('--start', type=str, help='Input binary start region file. Use this to define the start of the tract, in order to avoid reversed parcel ordering between the same tract in different subjects.', default=None)
+    parser.add_argument('--num_parcels', type=int, help='Number of parcels (default is an automatic estimation to obtain parcels of ~5 voxels thickness). In multy subject studies, set this to a fixed value to avoid different numbers of parcels between subjects.', default=None)
+    parser.add_argument('--type', type=str, help='Type of parcellation (\'hyperplane\', \'centerline\', or \'static\')', default='hyperplane')
+    parser.add_argument('--save_intermediate_files', help='Save intermediate files (envelope, colored streamlines, ...)', action='store_true')
+    parser.add_argument('--streamline_space', help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label. The output is a pickled dict with keys \'points\' and \'parcels\', usable for classic tractometry (see features.py or radtract_features command).', action='store_true')
     parser.add_argument('--output', type=str, help='Output parcellation image file')
 
     if len(sys.argv) == 1:

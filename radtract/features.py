@@ -354,11 +354,17 @@ def main():
     
     args = parser.parse_args()
 
-    calc_radiomics(parcellation_file_name=args.parcellation,
-                   parameter_map_file_name=args.map,
-                   pyrad_params=args.pyrad_params,
-                   out_csv_file=args.output,
-                   )
+    if args.parcellation.endswith('.nii.gz'):
+        calc_radiomics(parcellation_file_name=args.parcellation,
+                    parameter_map_file_name=args.map,
+                    pyrad_params=args.pyrad_params,
+                    out_csv_file=args.output,
+                    )
+    elif args.parcellation.endswith('.pkl'):
+        calc_tractometry(point_label_file_name=args.parcellation,
+                         parameter_map_file_name=args.map,
+                         out_csv_file=args.output,
+                         )
 
 
 if __name__ == '__main__':
