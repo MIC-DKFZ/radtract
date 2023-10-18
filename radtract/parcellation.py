@@ -38,6 +38,9 @@ def estimate_num_parcels(streamlines: nib.streamlines.array_sequence.ArraySequen
     average_spacing = np.mean(reference_image.header['pixdim'][1:4])
     num_voxels_passed = 0
 
+    if len(streamlines) == 0:
+        raise Exception('No streamlines found.')
+
     for s in streamlines:
         num_points = len(s)
 
