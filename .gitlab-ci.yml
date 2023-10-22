@@ -35,9 +35,9 @@ test_pytest:
   script:
     - pip install .
     - pytest tests/
-  #artifacts:
-  #  paths:
-  #    - tests/test_results/
+  artifacts:
+    paths:
+      - tests/test_results/
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
