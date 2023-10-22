@@ -81,7 +81,8 @@ def is_flipped(s: np.array,
     d_direct = 0
     d_flipped = 0
 
-    assert len(s) == len(ref), 'Streamline and reference streamline must have the same number of points.'
+    if len(s) != len(ref):
+        raise Exception('Streamline and reference streamline must have the same number of points.')
 
     num = len(s)
 
@@ -163,8 +164,8 @@ def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
     """
 
     print('Reorienting streamlines...')
-    assert start_region is not None or reference_streamline is not None, 'No reorientation possible. Please provide either start and end region or reference streamline.'
-
+    if start_region is None and reference_streamline is None:
+        raise ValueError('No reorientation possible. Please provide either start and end region or reference streamline.')
     if start_region is not None:
         start_region_data = start_region.get_fdata().astype('uint8')
 
@@ -231,7 +232,8 @@ def batch_parcellate_tracts(streamlines: list,
     :param postprocess:
     :return:
     """
-    assert len(streamlines) == len(binary_envelopes) == len(num_parcels) == len(start_regions) == len(out_parcellation_filenames), 'All inputs must have the same length.'
+    if not (len(streamlines) == len(binary_envelopes) == len(num_parcels) == len(start_regions) == len(out_parcellation_filenames)):
+        raise ValueError('All inputs must have the same length.')
     for i in range(len(streamlines)):
         parcellate_tract(streamlines=streamlines[i],
                          binary_envelope=binary_envelopes[i],
@@ -293,7 +295,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     :return: reduced_streamlines: reduced number of streamlines used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
     :return: svc: support vector classifier used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
     """
-    out_parcellation_filename.replace('.pkl', '.nii.gz')
+    out_parcellation_filename = out_parcellation_filename.replace('.pkl', '.nii.gz')
     if not out_parcellation_filename.endswith('.nii.gz'):
         out_parcellation_filename += '.nii.gz'
 
@@ -320,14 +322,17 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     else:
         print('Using provided binary envelope')
 
-    assert type(streamlines) is nib.streamlines.array_sequence.ArraySequence, 'Streamlines must be in dipy format!'
-    assert type(binary_envelope) is nib.Nifti1Image, 'Binary envelope must be Nifti1Image!'
-    if start_region is not None:
-        assert type(start_region) is nib.Nifti1Image, 'Start region must be Nifti1Image!'
-    assert parcellation_type in ['hyperplane', 'centerline', 'static'], 'Parcellation type must be hyperplane, centerline or static!'
-
+    if type(streamlines) is not nib.streamlines.array_sequence.ArraySequence:
+        raise Exception('Streamlines must be in dipy format!')
+    if type(binary_envelope) is not nib.Nifti1Image:
+        raise Exception('Binary envelope must be Nifti1Image!')
+    if start_region is not None and type(start_region) is not nib.Nifti1Image:
+        raise Exception('Start region must be Nifti1Image!')
+    if parcellation_type not in ['hyperplane', 'centerline', 'static']:
+        raise Exception('Parcellation type must be hyperplane, centerline or static!')
+    if len(streamlines) == 0:
+        raise Exception('No streamlines found!')
     print('Input number of fibers:', len(streamlines))
-    assert len(streamlines) > 0, 'No streamlines found!'
 
     if num_parcels is None or num_parcels < 1:
         num_parcels = estimate_num_parcels(streamlines=streamlines, reference_image=binary_envelope)
@@ -380,6 +385,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             threshold *= 0.9
             num_centroids = len(reduced_streamlines)
         print('Reduced number of fibers:', num_centroids)
+
+        # reorient reduced streamlines (can be flipped after clustering)
+        reduced_streamlines = reorient_streamlines(streamlines=reduced_streamlines, start_region=start_region, reference_streamline=reference_streamline)
 
         samples = []
         classes = []
@@ -450,6 +458,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         # create centerline
         qb = QuickBundles(threshold=9999., metric=metric)
         centerline = qb.cluster(oriented_streamlines).centroids[0]
+        
+        # reorient centerline (can be flipped after clustering)
+        centerline = reorient_streamlines(streamlines=[centerline], start_region=start_region, reference_streamline=reference_streamline)[0]
 
         # find nearest centerline point for each envelope index and label accordingly
         if not streamline_space:
