@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import vtk
 from dipy.tracking.streamline import transform_streamlines
-from radtract.utils import load_trk_streamlines
+from radtract.utils import load_trk_streamlines, is_inside
 from skimage.morphology import binary_closing
 import argparse
 import sys
@@ -145,10 +145,11 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # i
 
             segments = intersect_image(spacing, start_index, end_index, start_index_cont, end_index_cont)
             for seg in segments:
-                if binary:
-                    image_data[seg[0][0], seg[0][1], seg[0][2]] = 1
-                else:
-                    image_data[seg[0][0], seg[0][1], seg[0][2]] += seg[1]
+                if is_inside(seg[0], image_data):
+                    if binary:
+                        image_data[seg[0][0], seg[0][1], seg[0][2]] = 1
+                    else:
+                        image_data[seg[0][0], seg[0][1], seg[0][2]] += seg[1]
 
     # Perform morphological closing if binary and do_closing is True
     if binary and do_closing:

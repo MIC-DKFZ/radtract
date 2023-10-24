@@ -19,7 +19,7 @@ import joblib
 import multiprocessing
 import sys
 from radtract.tractdensity import tract_envelope
-from radtract.utils import load_trk_streamlines, save_as_vtk_fib, save_trk_streamlines
+from radtract.utils import load_trk_streamlines, save_as_vtk_fib, save_trk_streamlines, is_inside
 from fury.colormap import distinguishable_colormap
 import joblib
 
@@ -122,19 +122,6 @@ def split_parcellation(parcellation: nib.Nifti1Image):
             parcel = nib.Nifti1Image(bin_map, header=parcellation.header, affine=parcellation.affine)
             parcels.append(parcel)
     return parcels
-
-
-def is_inside(index, image):
-    """
-    Checks if a given index is inside the image.
-    :param index:
-    :param image:
-    :return:
-    """
-    for i in range(3):
-        if index[i] < 0 or index[i] > image.shape[i] - 1:
-            return False
-    return True
 
 
 def resample_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence,
@@ -550,10 +537,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                 for j in range(num_points):
                     p_cont = s[j]
                     p = np.round(p_cont).astype('int64')
-                    label = envelope_data[p[0], p[1], p[2]]
-                    color = lut_cmap[label-1]*255.0
-                    color = np.append(color, 255.0)
-                    colors.append(color)
+
+                    if is_inside(p, envelope_data):
+                        label = envelope_data[p[0], p[1], p[2]]
+                        color = lut_cmap[label-1]*255.0
+                        color = np.append(color, 255.0)
+                        colors.append(color)
+                    else:
+                        colors.append(np.array([0, 0, 0, 0]))
 
     elif streamline_point_parcels is not None:
         parcellation = streamline_point_parcels
