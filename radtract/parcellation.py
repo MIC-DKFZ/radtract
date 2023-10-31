@@ -522,6 +522,20 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             for i in range(1, num_parcels+1):
                 if i not in assigned_parcels:
                     print('WARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename)
+                    print('Check input tract, empty parcels are often cause by broken tracts!')
+
+        # check if streamline start and end points have same label
+        oriented_streamlines_voxelspace = transform_streamlines(oriented_streamlines, np.linalg.inv(affine))
+        count = 0
+        for s in oriented_streamlines_voxelspace:
+            p1 = s[0]
+            p2 = s[-1]
+            p1 = np.round(p1).astype('int64')
+            p2 = np.round(p2).astype('int64')
+            if envelope_data[p1[0], p1[1], p1[2]] == envelope_data[p2[0], p2[1], p2[2]]:
+                count += 1
+        if float(count)/len(oriented_streamlines) > 5:
+            print('WARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.')
 
         parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
         if out_parcellation_filename is not None:
@@ -531,7 +545,6 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         if save_intermediate_files:
             # create colors list
             colors = []
-            oriented_streamlines_voxelspace = transform_streamlines(oriented_streamlines, np.linalg.inv(affine))
             for s in oriented_streamlines_voxelspace:
                 num_points = len(s)
                 for j in range(num_points):
