@@ -299,13 +299,16 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     if type(start_region) is str and os.path.isfile(start_region):
         start_region = nib.load(start_region)
 
+    auto_envelope = False
     if binary_envelope is None:
         if type(start_region) is nib.Nifti1Image:
             print('Creating binary envelope from start region')
             binary_envelope = tract_envelope(streamlines, start_region)
+            auto_envelope = True
         elif type(reference_image) is nib.Nifti1Image:
             print('Creating binary envelope from reference image')
             binary_envelope = tract_envelope(streamlines, reference_image)
+            auto_envelope = True
     else:
         print('Using provided binary envelope')
 
@@ -525,6 +528,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                     print('Check input tract, empty parcels are often cause by broken tracts!')
 
         # check if streamline start and end points have same label
+        # check if there are a lot of voxels not covered by the tract
+        fastenv = np.zeros(envelope_data.shape, dtype='uint8')
         oriented_streamlines_voxelspace = transform_streamlines(oriented_streamlines, np.linalg.inv(affine))
         count = 0
         for s in oriented_streamlines_voxelspace:
@@ -534,8 +539,23 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             p2 = np.round(p2).astype('int64')
             if envelope_data[p1[0], p1[1], p1[2]] == envelope_data[p2[0], p2[1], p2[2]]:
                 count += 1
+
+            if not auto_envelope:
+                num_points = len(s)
+                for j in range(num_points):
+                    p_cont = s[j]
+                    p = np.round(p_cont).astype('int64')
+                    fastenv[p[0], p[1], p[2]] = 1
+
+        if not auto_envelope:
+            # get dice coefficient beweteen fastenv and binarized envelope_data
+            dice = np.sum(np.logical_and(fastenv, envelope_data))/np.sum(np.logical_or(fastenv, envelope_data))
+            if dice < 0.75:
+                print('WARNING: Overlap between binary envelope and tract points is only ' + str(np.round(dice, 2)) + '. Consider automatic envelope calulation.')
+
         if float(count)/len(oriented_streamlines) > 5:
             print('WARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.')
+
 
         parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
         if out_parcellation_filename is not None:
@@ -544,6 +564,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         if save_intermediate_files:
             # create colors list
+
+            outside = 0
             colors = []
             for s in oriented_streamlines_voxelspace:
                 num_points = len(s)
@@ -553,11 +575,18 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
                     if is_inside(p, envelope_data):
                         label = envelope_data[p[0], p[1], p[2]]
-                        color = lut_cmap[label-1]*255.0
-                        color = np.append(color, 255.0)
-                        colors.append(color)
+                        if label > 0:
+                            color = lut_cmap[label-1]*255.0
+                            color = np.append(color, 255.0)
+                            colors.append(color)
+                        else:
+                            colors.append(np.array([0, 0, 0, 0]))
+                            outside += 1
                     else:
                         colors.append(np.array([0, 0, 0, 0]))
+                        outside += 1
+            if outside > 0:
+                print('WARNING: ' + str(outside) + ' streamline points are outside the binary envelope. The respective streamline points are colored black.')
 
     elif streamline_point_parcels is not None:
         parcellation = streamline_point_parcels
