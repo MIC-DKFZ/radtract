@@ -141,18 +141,20 @@ def resample_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
 
 def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence,
                          start_region: nib.Nifti1Image = None,
-                         reference_streamline: np.array = None):
+                         reference_streamline: np.array = None,
+                         check_start_end: bool = True):
     """
     Reorients streamlines to not be flipped relative to each other.
     :param streamlines: streamlines to reorient
     :param start_region: if set the streamlines are reoriented to all start in this region
     :param reference_streamline: if start_region is not set the streamlines are reoriented to be aligned with this reference streamline
+    :param check_start_end: if set, streamlines that start and end in the same region are removed
     :return:
     """
 
-    print('Reorienting streamlines...')
     if start_region is None and reference_streamline is None:
         raise ValueError('No reorientation possible. Please provide either start and end region or reference streamline.')
+    
     if start_region is not None:
         start_region_data = start_region.get_fdata().astype('uint8')
 
@@ -173,13 +175,29 @@ def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
 
         idx = 0
         oriented_streamlines = []
+        count_wrong = 0
         for d_s, d_e in zip(dists_s, dists_e):
+            
+            if check_start_end and d_s < 1.5 and d_e < 1.5:
+                idx += 1
+                count_wrong += 1
+                continue
+
             if d_s < d_e:
                 oriented_streamlines.append(streamlines[idx])
             else:
                 oriented_streamlines.append(np.flip(streamlines[idx], axis=0))
             idx += 1
 
+        if check_start_end:
+            wrong_fraction = np.round(100*float(count_wrong)/len(streamlines), 1)
+            if wrong_fraction > 95:
+                raise Exception('More than 95% of streamlines start and end in the same region. This might indicate a broken tract and/or start region. Please check your inputs.')
+            if count_wrong > 0:
+                print('Removed ' + str(count_wrong) + ' streamlines (' + str(wrong_fraction) + '%) that start and end in the same region.')
+            if wrong_fraction > 10:
+                print('\033[91mWARNING: Fraction of streamlines that start and end in the same region is large (' + str(wrong_fraction) + '%). This indicates a broken tract and/or start region. Please check your inputs.\033[0m')
+     
         return oriented_streamlines
     elif reference_streamline is not None:
 
@@ -337,8 +355,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             local_reference_streamline = np.flip(local_reference_streamline, axis=0)
         reference_streamline = local_reference_streamline
 
+    print('Reorienting streamlines')
     oriented_streamlines = reorient_streamlines(streamlines=streamlines, start_region=start_region, reference_streamline=reference_streamline)
-
+    
     envelope_data = np.copy(binary_envelope.get_fdata().astype('uint8'))
     if dilate_envelope:
         envelope_data = binary_dilation(envelope_data).astype('uint8')
@@ -436,7 +455,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                 centerline = qb.cluster(oriented_streamlines).centroids[0]
                 for i in range(num_parcels):
                     if i+1 not in check:
-                        print('WARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename)
+                        print('\033[91mWARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename + '\033[0m')
+
                         streamline_point_parcels['parcels'] = np.append(streamline_point_parcels['parcels'], i+1)
                         streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
 
@@ -474,7 +494,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             if check.shape[0] != num_parcels:
                 for i in range(num_parcels):
                     if i not in check:
-                        print('WARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename)
+                        print('\033[91mWARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename + '\033[0m')
                         streamline_point_parcels['parcels'] = np.append(streamline_point_parcels['parcels'], i+1)
                         streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
 
@@ -524,8 +544,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         if assigned_parcels.shape[0] != num_parcels:
             for i in range(1, num_parcels+1):
                 if i not in assigned_parcels:
-                    print('WARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename)
-                    print('Check input tract, empty parcels are often cause by broken tracts!')
+                    print('\033[91mWARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename + '\033[0m')
+                    print('\033[91mCheck input tract, empty parcels are often cause by broken tracts!\033[0m')
 
         # check if streamline start and end points have same label
         # check if there are a lot of voxels not covered by the tract
@@ -551,10 +571,10 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             # get dice coefficient beweteen fastenv and binarized envelope_data
             dice = np.sum(np.logical_and(fastenv, envelope_data))/np.sum(np.logical_or(fastenv, envelope_data))
             if dice < 0.75:
-                print('WARNING: Overlap between binary envelope and tract points is only ' + str(np.round(dice, 2)) + '. Consider automatic envelope calulation.')
+                print('\033[91mWARNING: Overlap between binary envelope and tract points is only ' + str(np.round(dice, 2)) + '. Consider automatic envelope calulation.\033[0m')
 
         if float(count)/len(oriented_streamlines) > 5:
-            print('WARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.')
+            print('\033[91mWARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.\033[0m')
 
 
         parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
@@ -586,7 +606,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                         colors.append(np.array([0, 0, 0, 0]))
                         outside += 1
             if outside > 0:
-                print('WARNING: ' + str(outside) + ' streamline points are outside the binary envelope. The respective streamline points are colored black.')
+                print('\033[91mWARNING: ' + str(outside) + ' streamline points are outside the binary envelope. The respective streamline points are colored black.\033[0m')
 
     elif streamline_point_parcels is not None:
         parcellation = streamline_point_parcels
