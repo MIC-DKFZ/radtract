@@ -205,23 +205,6 @@ def calc_tractometry(point_label_file_name: str,
             points_per_parcel[parcel] = []
         points_per_parcel[parcel].append(p)
 
-    # for parcel in points_per_parcel.keys():
-    #     text = ''
-    #     text += '<?xml version="1.0" encoding="UTF-8"?><point_set_file><file_version>0.1</file_version><point_set><time_series><time_series_id>0</time_series_id><Geometry3D ImageGeometry="false" FrameOfReferenceID="0">'
-    #     text += '<IndexToWorld type="Matrix3x3" m_0_0="1" m_0_1="0" m_0_2="0" m_1_0="0" m_1_1="1" m_1_2="0" m_2_0="0" m_2_1="0" m_2_2="1"/><Offset type="Vector3D" x="0" y="0" z="0"/><Bounds>'
-    #     text += '<Min type="Vector3D" x="89.933372497558594" y="98.688766479492188" z="-0.39603650569915771"/><Max type="Vector3D" x="127.03989410400391" y="165.80229187011719" z="141.04673767089844"/></Bounds></Geometry3D>'
-    #     i = 0
-    #     for p in points_per_parcel[parcel]:
-    #         text += '<point><id>' + str(i) + '</id><specification>0</specification>'
-    #         text += '<x>' + str(p[0]) + '</x>'
-    #         text += '<y>' + str(p[1]) + '</y>'
-    #         text += '<z>' + str(p[2]) + '</z>'
-    #         text += '</point>'
-    #         i += 1
-    #     text += '</time_series></point_set></point_set_file>'
-    #     with open(os.path.join(os.path.dirname(point_label_file_name), 'tractometry_points_' + str(parcel) + '.mps'), 'w') as f:
-    #         f.write(text)
-
     for parcel in sorted(vals_per_parcel.keys()):
         features['map'].append(parameter_map_file_name)
         features['parcellation'].append(point_label_file_name)

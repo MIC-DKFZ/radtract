@@ -190,6 +190,7 @@ def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
             idx += 1
 
         if check_start_end:
+            # To-do: optionally allow defaulting to refernce streamline based reorienttation if too many streamlines end in the same region
             wrong_fraction = np.round(100*float(count_wrong)/len(streamlines), 1)
             if wrong_fraction > 95:
                 raise Exception('More than 95% of streamlines start and end in the same region. This might indicate a broken tract and/or start region. Please check your inputs.')

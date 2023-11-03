@@ -11,6 +11,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from fury.colormap import distinguishable_colormap
+import joblib
+import pandas as pd
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+from scipy import stats
+import os
+import zipfile
+import uuid
 
 
 def save_trk_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence, filename: str, reference_image: nib.Nifti1Image):
@@ -58,6 +66,86 @@ def plot_parcellation(nifti_file, mip_axis):
     plt.show()
 
 
+def estimate_ci(y_true, y_scores):
+    classes = np.unique(y_true)
+    y_true_bin = label_binarize(y_true, classes=classes)
+    ci_size = 0
+
+    if len(classes) > 2:
+
+        auc_scores = []
+        for i in range(len(classes)):
+            # Compute ROC curve and ROC area for each class
+            fpr, tpr, _ = roc_curve(y_true_bin[:, i], y_scores[:, i])
+            roc_auc = auc(fpr, tpr)
+            auc_scores.append(roc_auc)
+
+        # Compute the standard error and the confidence intervals for each class
+        conf_intervals = []
+        for i in range(len(classes)):
+            n1 = sum(y_true_bin[:, i])
+            n2 = len(y_true_bin[:, i]) - n1
+            roc_auc = auc_scores[i]
+            
+            q1 = roc_auc / (2.0 - roc_auc)
+            q2 = 2 * roc_auc ** 2 / (1.0 + roc_auc)
+            se = np.sqrt((roc_auc * (1 - roc_auc) + (n1 - 1) * (q1 - roc_auc ** 2) + (n2 - 1) * (q2 - roc_auc ** 2)) / (n1 * n2))
+
+            conf_interval = stats.norm.interval(0.95, loc=roc_auc, scale=se)
+            conf_intervals.append(conf_interval)
+
+        # Compute weighted average of AUC scores and confidence intervals
+        weights = [sum(y_true_bin[:, i]) for i in range(len(classes))]
+        avg_auc_score = np.average(auc_scores, weights=weights)
+        avg_conf_interval = [np.average([conf_intervals[i][j] for i in range(len(classes))], weights=weights) for j in range(2)]
+        ci_size = avg_auc_score - avg_conf_interval[0]
+        return ci_size, avg_auc_score
+
+    else:
+
+        # Compute ROC curve
+        fpr, tpr, thresholds = roc_curve(y_true, y_scores[:, 1])
+        roc_auc = auc(fpr, tpr)
+
+        # Compute the standard error and the confidence intervals
+        n1 = sum(y_true)
+        n2 = len(y_true) - n1
+        
+        q1 = roc_auc / (2.0 - roc_auc)
+        q2 = 2 * roc_auc ** 2 / (1.0 + roc_auc)
+        se = np.sqrt((roc_auc * (1 - roc_auc) + (n1 - 1) * (q1 - roc_auc ** 2) + (n2 - 1) * (q2 - roc_auc ** 2)) / (n1 * n2))
+
+        conf_interval = stats.norm.interval(0.95, loc=roc_auc, scale=se)
+        ci_size = roc_auc - conf_interval[0]
+        return ci_size, roc_auc
+
+
+def load_results(result_pkl):
+    
+    aucs = dict()
+    aucs['AUROC'] = []
+    aucs['CI'] = []
+    aucs['p'] = []
+    aucs['y'] = []
+
+    p, y = joblib.load(result_pkl)
+    nsamples = len(p)//10
+    
+    for rep in range(10):
+        p_rep = p[rep*nsamples:(rep+1)*nsamples]
+        y_rep = y[rep*nsamples:(rep+1)*nsamples]
+
+        ci, roc_auc = estimate_ci(y_rep, p_rep)
+
+        aucs['AUROC'].append(roc_auc)
+        aucs['CI'].append(ci)
+        aucs['p'].append(p_rep)
+        aucs['y'].append(y_rep)
+
+    aucs = pd.DataFrame(aucs)
+    return aucs
+
+
 def is_inside(index, image):
     """
     Checks if a given index is inside the image.
@@ -70,6 +158,148 @@ def is_inside(index, image):
             return False
     return True
 
+
+def point_label_file_to_mitkpointset(point_label_file, out_path, streamline_files = []):
+
+    points_per_parcel = pd.read_pickle(point_label_file)
+
+    pointsets = dict()
+
+    for point, parcel in zip(points_per_parcel['points'], points_per_parcel['parcels']):
+        
+        if parcel not in pointsets.keys():
+            pointsets[parcel] = []
+        pointsets[parcel].append(point)
+
+    o = out_path + 'scenefile/'
+    os.makedirs(o, exist_ok=True)
+
+    # write index
+    first_file = 'aaaaaa'
+    text = '<?xml version="1.0" encoding="UTF-8"?>'
+    text += '<Version Writer="/home/neher/coding/mitk/mitk/Modules/SceneSerialization/src/mitkSceneIO.cpp" Revision="$Revision: 17055 $" FileVersion="1"/>'
+    index = 0
+    for parcel in sorted(pointsets.keys()):
+        ps = first_file + '_P' + str(parcel) + '.mps'
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        props2 = first_file
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        text += '<node UID="' + str(uuid.uuid4()) + '">'
+        text += '<data type="PointSet" file="' + ps + '" UID="' + str(uuid.uuid4()) + '">'
+        text += '</data>'
+        text += '<properties file="' + props2 + '"/>'
+        text += '</node>'
+    
+    for streamline_file in streamline_files:
+
+        name = streamline_file.split('/')[-1]
+
+        ps = first_file + '_' + name
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        props2 = first_file
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        text += '<node UID="' + str(uuid.uuid4()) + '">'
+        text += '<data type="FiberBundle" file="' + ps + '" UID="' + str(uuid.uuid4()) + '">'
+        text += '</data>'
+        text += '<properties file="' + props2 + '"/>'
+        text += '</node>'
+        
+    with open(o + 'index.xml', 'w') as f:
+        f.write(text)
+
+    first_file = 'aaaaaa'
+    lut_cmap = distinguishable_colormap(nb_colors=len(pointsets.keys()))
+    index = 0
+    for parcel in sorted(pointsets.keys()):
+
+        ps = first_file + '_P' + str(parcel) + '.mps'
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        props2 = first_file
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        # write pointset
+        text = '<?xml version="1.0" encoding="UTF-8"?><point_set_file><file_version>0.1</file_version><point_set><time_series><time_series_id>0</time_series_id><Geometry3D ImageGeometry="false" FrameOfReferenceID="0">'
+        text += '<IndexToWorld type="Matrix3x3" m_0_0="1" m_0_1="0" m_0_2="0" m_1_0="0" m_1_1="1" m_1_2="0" m_2_0="0" m_2_1="0" m_2_2="1"/><Offset type="Vector3D" x="0" y="0" z="0"/><Bounds>'
+        text += '<Min type="Vector3D" x="89.933372497558594" y="98.688766479492188" z="-0.39603650569915771"/><Max type="Vector3D" x="127.03989410400391" y="165.80229187011719" z="141.04673767089844"/></Bounds></Geometry3D>'
+        i = 0
+        for p in pointsets[parcel]:
+            text += '<point><id>' + str(i) + '</id><specification>0</specification>'
+            text += '<x>' + str(p[0]) + '</x>'
+            text += '<y>' + str(p[1]) + '</y>'
+            text += '<z>' + str(p[2]) + '</z>'
+            text += '</point>'
+            i += 1
+        text += '</time_series></point_set></point_set_file>'
+        with open(o + ps, 'w') as f:
+            f.write(text)
+
+        color = lut_cmap[parcel-1]
+
+        # write props2
+        text = '<?xml version="1.0" encoding="UTF-8"?>'
+        text += '<Version Writer="/home/neher/coding/mitk/mitk/Modules/SceneSerializationBase/src/mitkPropertyListSerializer.cpp" Revision="$Revision: 17055 $" FileVersion="1"/>'
+        text += '<property key="pointsize" type="FloatProperty">'
+        text += '<float value="0.5"/>'
+        text += '</property>'
+        text += '<property key="color" type="ColorProperty">'
+        text += '<color r="' + str(color[0]) + '" g="' + str(color[1]) + '" b="' + str(color[2]) + '"/>'
+        text += '</property>'
+        text += '<property key="name" type="StringProperty">'
+        text += '<string value="P' + str(parcel) + '"/>'
+        text += '</property>'
+        with open(o + props2, 'w') as f:
+            f.write(text)
+
+    for streamline_file in streamline_files:
+
+        name = streamline_file.split('/')[-1]
+
+        ps = first_file + '_' + name
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        props2 = first_file
+        first_file = first_file[:index] + chr(ord(first_file[index]) + 1) + first_file[index+1:]
+        if first_file[index] == 'z':
+            index += 1
+
+        os.system('cp ' + streamline_file + ' ' + o + ps)
+
+        # write props2
+        text = '<?xml version="1.0" encoding="UTF-8"?>'
+        text += '<Version Writer="/home/neher/coding/mitk/mitk/Modules/SceneSerializationBase/src/mitkPropertyListSerializer.cpp" Revision="$Revision: 17055 $" FileVersion="1"/>'
+        text += '<property key="shape.tuberadius" type="FloatProperty">'
+        text += '<float value="0.1"/>'
+        text += '</property>'
+        text += '<property key="name" type="StringProperty">'
+        text += '<string value="' + name.replace('.fib', '') + '"/>'
+        text += '</property>'
+        with open(o + props2, 'w') as f:
+            f.write(text)
+
+    # create zip of o in out_path
+    zipf = zipfile.ZipFile(out_path + 'scenefile.mitk', 'w', zipfile.ZIP_DEFLATED)
+    for root, dirs, files in os.walk(o):
+        for file in files:
+            zipf.write(os.path.join(root, file), file)
 
 
 def main():
