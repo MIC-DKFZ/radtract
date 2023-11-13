@@ -35,6 +35,8 @@ See `.gitlab-ci.yml` for the currently tested configurations.
 
 ### Installation
 
+Installation via anaconda is not supported currently!
+
 1. virtual environment
    - Create a virtual environment: `python -m venv myvenv`
    - Activate the virtual environment: `source myvenv/bin/activate`

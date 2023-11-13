@@ -50,20 +50,31 @@ def save_as_vtk_fib(streamlines, out_filename, colors=None):
     save_polydata(polydata=polydata, file_name=out_filename, binary=True)
 
 
-def plot_parcellation(nifti_file, mip_axis):
+def plot_parcellation(nifti_file, mip_axis, slice=0.5, thickness=0, out_file=None):
     """
     
     """
 
     image = nib.load(nifti_file)
     data = image.get_fdata()
+    if thickness > 0:
+        i = int(slice * data.shape[mip_axis])
+        if mip_axis == 0:
+            data = data[i-thickness:i+thickness, :, :]
+        elif mip_axis == 1:
+            data = data[:, i-thickness:i+thickness, :]
+        elif mip_axis == 2:
+            data = data[:, :, i-thickness:i+thickness]
     mip = np.max(data, axis=mip_axis)
     nb_labels = len(np.unique(mip)) - 1
     fury_cmap = distinguishable_colormap(nb_colors=nb_labels)
     fury_cmap = [np.array([0, 0, 0, 1])] + fury_cmap
     mpl_cmap = ListedColormap(fury_cmap)
     plt.imshow(mip.T, cmap=mpl_cmap, origin='lower')
-    plt.show()
+    if out_file is not None:
+        plt.savefig(out_file, dpi=600)
+    else:
+        plt.show()
 
 
 def estimate_ci(y_true, y_scores):
