@@ -41,7 +41,13 @@ def load_trk_streamlines(filename: str):
     return streamlines
 
 def save_as_vtk_fib(streamlines, out_filename, colors=None):
-
+    """
+    Saves streamlines as vtk fib file.
+    :param streamlines: streamlines in dipy format
+    :param out_filename: output filename
+    :param colors: colors for each streamline point
+    :return:
+    """
     polydata, _ = lines_to_vtk_polydata(streamlines)
     if colors is not None:
         vtk_colors = numpy_to_vtk_colors(colors)
@@ -52,9 +58,8 @@ def save_as_vtk_fib(streamlines, out_filename, colors=None):
 
 def plot_parcellation(nifti_file, mip_axis, slice=0.5, thickness=0, out_file=None):
     """
-    
+    Plots a parcellation as a maximum intensity projection.
     """
-
     image = nib.load(nifti_file)
     data = image.get_fdata()
     if thickness > 0:
@@ -70,7 +75,15 @@ def plot_parcellation(nifti_file, mip_axis, slice=0.5, thickness=0, out_file=Non
     fury_cmap = distinguishable_colormap(nb_colors=nb_labels)
     fury_cmap = [np.array([0, 0, 0, 1])] + fury_cmap
     mpl_cmap = ListedColormap(fury_cmap)
+    # set figure size
+    plt.figure(figsize=(10, 10))
     plt.imshow(mip.T, cmap=mpl_cmap, origin='lower')
+    # remove ticks
+    plt.xticks([])
+    plt.yticks([])
+    # remove white padding
+    plt.tight_layout(pad=0)
+
     if out_file is not None:
         plt.savefig(out_file, dpi=600)
     else:
@@ -78,6 +91,12 @@ def plot_parcellation(nifti_file, mip_axis, slice=0.5, thickness=0, out_file=Non
 
 
 def estimate_ci(y_true, y_scores):
+    """
+    Estimates the confidence interval for a ROC curve.
+    :param y_true: true labels
+    :param y_scores: predicted scores
+    :return: confidence interval size, AUROC score
+    """
     classes = np.unique(y_true)
     y_true_bin = label_binarize(y_true, classes=classes)
     ci_size = 0
@@ -131,7 +150,12 @@ def estimate_ci(y_true, y_scores):
         return ci_size, roc_auc
 
 
-def load_results(result_pkl):
+def load_results(result_pkl, repetitions=10):
+    """
+    Loads the results of a cross-validation experiment.
+    :param result_pkl: path to the result pickle file. format: (predicted probabilities, true labels)
+    :return: pandas dataframe with the results as dictionary containing the AUROC scores, confidence intervals and p, y per repetition
+    """
     
     aucs = dict()
     aucs['AUROC'] = []
@@ -140,9 +164,9 @@ def load_results(result_pkl):
     aucs['y'] = []
 
     p, y = joblib.load(result_pkl)
-    nsamples = len(p)//10
+    nsamples = len(p)//repetitions
     
-    for rep in range(10):
+    for rep in range(repetitions):
         p_rep = p[rep*nsamples:(rep+1)*nsamples]
         y_rep = y[rep*nsamples:(rep+1)*nsamples]
 
@@ -171,6 +195,13 @@ def is_inside(index, image):
 
 
 def point_label_file_to_mitkpointset(point_label_file, out_path, streamline_files = []):
+    """
+    Converts a point label file to a scene file of mitk pointsets. This is useful to visualize the streamline points with labels as point clouds in MITK Diffusion (https://github.com/MIC-DKFZ/MITK-Diffusion/).
+    :param point_label_file: path to point label file
+    :param out_path: output path
+    :param streamline_files: list of streamline files to include in the mitk scene file
+    :return:
+    """
 
     points_per_parcel = pd.read_pickle(point_label_file)
 
