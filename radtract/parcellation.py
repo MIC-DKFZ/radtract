@@ -278,7 +278,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      new_voxel_size: tuple = None,
                      postprocess: bool = False,
                      streamline_space: bool = False,
-                     save_intermediate_files: bool = False):
+                     save_intermediate_files: bool = False,
+                     fast_mode: bool = False,
+                     resample: bool = False):
     """
     Parcellate input streamlines into num_parcels parcels.
     :param streamlines: input streamlines in dipy format
@@ -295,7 +297,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     :param postprocess: remove outliers by voting label of each voxel by label of its 26 neighbors
     :param streamline_space: if set, the parcellation is performed in streamline space instead of voxel space. The output is not a parcellation image but a dict containing the streamline points and the parcel label for each point.
     :param save_intermediate_files: if set, intermediate files, such as the binary envelope, are saved to disk
-
+    :param fast_mode: if set and type is hyperplane in streamline space, the prediction is performed on the reduced number of streamlines and then projected to all streamlines. Probably less accurate.
+    :param resample: if set, the input streamlines are resampled to 3*num_parcels points before parcellation. This increases coverage of the bundle for tractometry (streamline_space == True), but changes the bundle sampling and might drastically increase parcellation time (if hyperplane and not fast_mode).
+    
     :return: parcellation: parcellation as image containing the parcel label for each nonzero voxel of the streamline envelope
     :return: reference_streamline: reference streamline used in the parcellation process (none if start_region is set and reference_streamline is not set)
     :return: reduced_streamlines: reduced number of streamlines used for hyperplane-based parcellation (none if parcellation_type is 'centerline')
@@ -358,6 +362,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
     print('Reorienting streamlines')
     oriented_streamlines = reorient_streamlines(streamlines=streamlines, start_region=start_region, reference_streamline=reference_streamline)
+    if resample:
+        oriented_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels*3)
     
     envelope_data = np.copy(binary_envelope.get_fdata().astype('uint8'))
     if dilate_envelope:
@@ -426,12 +432,18 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             streamline_point_parcels['points'] = []
             streamline_point_parcels['parcels'] = []
 
+            if fast_mode:
+                pred_streamlines = reduced_streamlines
+            else:
+                pred_streamlines = oriented_streamlines
+
+            points = np.concatenate(pred_streamlines, axis=0)
+            print('Predicting hyperplane-parcellation for ' + str(points.shape[0]) + ' streamline points using ' + str(multiprocessing.cpu_count()-1) + ' cores')
+
             argslist = []
-            for s in oriented_streamlines:
+            for s in pred_streamlines:
                 argslist.append((svc, s))
 
-            points = np.concatenate(oriented_streamlines, axis=0)
-            print('Predicting hyperplane-parcellation for ' + str(points.shape[0]) + ' streamline points using ' + str(multiprocessing.cpu_count()-1) + ' cores')
             pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
             results = pool.map(predict_points, argslist)
 
@@ -443,6 +455,18 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
             pool.close()
             pool.join()
+
+            if fast_mode:
+                print('Used fast mode by predicting only on training streamlines. Assigning parcels to all original streamlines using nearest neigbor.')
+                all_points = np.concatenate(oriented_streamlines, axis=0)
+                _, p_idxs = cKDTree(points, 1, copy_data=True).query(all_points, k=1)
+
+                all_parcels = []
+                for i in range(len(p_idxs)):
+                    all_parcels.append(predicted_parcels[p_idxs[i]])
+
+                predicted_parcels = all_parcels
+                points = all_points.tolist()
 
             streamline_point_parcels['points'] = points
             streamline_point_parcels['parcels'] = predicted_parcels
@@ -459,7 +483,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                         print('\033[91mWARNING: empty parcel ' + str(i+1) + '. Adding corresponding centerline point to file ' + out_parcellation_filename + '\033[0m')
 
                         streamline_point_parcels['parcels'] = np.append(streamline_point_parcels['parcels'], i+1)
-                        streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)
+                        streamline_point_parcels['points'] = np.append(streamline_point_parcels['points'], [centerline[i]], axis=0)                
+
 
         print('Finished hyperplane-based parcellation')
 
@@ -659,6 +684,8 @@ def main():
     parser.add_argument('--type', type=str, help='Type of parcellation (\'hyperplane\', \'centerline\', or \'static\')', default='hyperplane')
     parser.add_argument('--save_intermediate_files', help='Save intermediate files (envelope, colored streamlines, ...)', action='store_true')
     parser.add_argument('--streamline_space', help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label. The output is a pickled dict with keys \'points\' and \'parcels\', usable for classic tractometry (see features.py or radtract_features command).', action='store_true')
+    parser.add_argument('--fast_mode', help='If True, the hyperplane-based parcellation is performed on the reduced number of streamlines and then projected to all streamlines. Probably less accurate.', action='store_true')
+    parser.add_argument('--resample', help='If True, the input streamlines are resampled to 3*num_parcels points before parcellation. This increases coverage of the bundle for tractometry (streamline_space == True), but changes the bundle sampling and might drastically increase parcellation time (if hyperplane and not fast_mode).', action='store_true')
     parser.add_argument('--output', type=str, help='Output parcellation image file')
 
     if len(sys.argv) == 1:
@@ -666,6 +693,9 @@ def main():
         return
 
     args = parser.parse_args()
+
+    if args.type == 'hyperplane' and args.streamline_space and not args.fast_mode:
+        print('\033[91mWARNING: Hyperplane-based parcellation might be slow when using --streamline_space, particularly when also using --resample. Consider using --fast_mode.\033[0m')
 
     parcellate_tract(streamlines=args.streamlines,
                      parcellation_type=args.type,
@@ -675,6 +705,8 @@ def main():
                      start_region=args.start,
                      save_intermediate_files=args.save_intermediate_files,
                      streamline_space=args.streamline_space,
+                     fast_mode=args.fast_mode,
+                     resample=args.resample,
                      out_parcellation_filename=args.output)
 
 
