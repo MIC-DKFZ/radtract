@@ -265,6 +265,32 @@ def predict_points(argstuple):
     return prediction.tolist(), points.tolist()
 
 
+def check_gradient(parcellation: np.array):
+    """
+    Checks if the parcellation has a large gradient in 6-face neighborhood, i.e. if there are large jumps between neighboring parcels.
+    :param parcellation: input parcellation
+    :return: gradient image
+    """
+    max_parcel = np.max(parcellation)
+    # list of 6-face neighbors
+    neighbors = [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]]
+    newdata = np.zeros(parcellation.shape)
+    for i in range(1, parcellation.shape[0]-1):
+        for j in range(1, parcellation.shape[1]-1):
+            for k in range(1, parcellation.shape[2]-1):
+                v = parcellation[i,j,k]
+                if v > 0:
+                    max_diff = 0
+                    for n in neighbors:
+                        nv = parcellation[i+n[0],j+n[1],k+n[2]]
+                        if v==1 and nv==max_parcel or v==max_parcel and nv==1: # ignore jumps between first and last parcel
+                            continue
+                        if nv > 0:
+                            max_diff = max(max_diff, abs(v - nv))
+                    newdata[i,j,k] = max_diff
+    return newdata
+
+
 def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                      binary_envelope: nib.Nifti1Image = None,
                      reference_image: nib.Nifti1Image = None,
@@ -363,6 +389,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     print('Reorienting streamlines')
     oriented_streamlines = reorient_streamlines(streamlines=streamlines, start_region=start_region, reference_streamline=reference_streamline)
     if resample:
+        print('Resampling streamlines to ' + str(num_parcels*3) + ' points')
         oriented_streamlines = resample_streamlines(oriented_streamlines, nb_points=num_parcels*3)
     
     envelope_data = np.copy(binary_envelope.get_fdata().astype('uint8'))
@@ -383,6 +410,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         for idx in envelope_indices:
             envelope_world_coordinates.append(apply_affine(affine, idx))
         envelope_world_coordinates = np.array(envelope_world_coordinates)
+
+    if max(envelope_data.shape)//2 <= num_parcels and not streamline_space:
+        print('\033[91mWARNING: num_parcels is high in comparison to the image size. Consider a lower number of parcels for a voxel-space tract parcellation.\033[0m')
 
     # define outputs
     reduced_streamlines = None
@@ -545,6 +575,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         envelope_data = None
 
     if postprocess and envelope_data is not None:
+        # remove outliers by voting label of each voxel by label of its 26 neighbors
         print('Postprocessing parcellation')
         data_temp = np.zeros(envelope_data.shape).astype('uint8')
         labels = np.unique(envelope_data)
@@ -565,6 +596,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     lut_cmap = distinguishable_colormap(nb_colors=num_parcels)
     if envelope_data is not None:
 
+        # check if all parcels are present (1 ... num_parcels)
         assigned_parcels = np.unique(envelope_data)
         assigned_parcels = assigned_parcels[assigned_parcels > 0]
         if assigned_parcels.shape[0] != num_parcels:
@@ -572,6 +604,15 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                 if i not in assigned_parcels:
                     print('\033[91mWARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename + '\033[0m')
                     print('\033[91mCheck input tract, empty parcels are often cause by broken tracts!\033[0m')
+
+        # check if parcellation has large gradient in 6-face neighborhood, i.e. if there are large jumps between neighboring parcels
+        gimg = check_gradient(envelope_data)
+        g = np.max(gimg)
+        if g > 1:
+            print('\033[91mWARNING: Parcellation jumps between neighboring parcels (max label difference ' + str(g) +'). Please check your data.\033[0m')
+            if save_intermediate_files:
+                gimg = nib.Nifti1Image(gimg, affine=binary_envelope.affine)
+                nib.save(gimg, out_parcellation_filename.replace('.nii.gz', '_gradient.nii.gz'))
 
         # check if streamline start and end points have same label
         # check if there are a lot of voxels not covered by the tract
@@ -592,16 +633,16 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                     p_cont = s[j]
                     p = np.round(p_cont).astype('int64')
                     fastenv[p[0], p[1], p[2]] = 1
+        
+        if float(count)/len(oriented_streamlines) > 5:
+            print('\033[91mWARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.\033[0m')
 
+        # if using provided envelope, check if there are dicrepancies between the binary envelope and the tract points
         if not auto_envelope:
             # get dice coefficient beweteen fastenv and binarized envelope_data
             dice = np.sum(np.logical_and(fastenv, envelope_data))/np.sum(np.logical_or(fastenv, envelope_data))
             if dice < 0.75:
                 print('\033[91mWARNING: Overlap between binary envelope and tract points is only ' + str(np.round(dice, 2)) + '. Consider automatic envelope calulation.\033[0m')
-
-        if float(count)/len(oriented_streamlines) > 5:
-            print('\033[91mWARNING: ' + str(float(count)/len(oriented_streamlines)) + '%% of streamlines have the same start and end label. This is likely caused by a broken input tract.\033[0m')
-
 
         parcellation = nib.Nifti1Image(envelope_data, affine=binary_envelope.affine, dtype='uint8')
         if out_parcellation_filename is not None:
@@ -610,7 +651,6 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
         if save_intermediate_files:
             # create colors list
-
             outside = 0
             colors = []
             for s in oriented_streamlines_voxelspace:
