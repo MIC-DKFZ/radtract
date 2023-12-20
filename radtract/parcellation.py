@@ -235,18 +235,19 @@ def check_gradient(parcellation: np.array):
     :param parcellation: input parcellation
     :return: gradient image
     """
-    max_parcel = np.max(parcellation)
+    wc = parcellation.astype('int64')
+    max_parcel = np.max(wc)
     # list of 6-face neighbors
     neighbors = [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]]
-    newdata = np.zeros(parcellation.shape)
-    for i in range(1, parcellation.shape[0]-1):
-        for j in range(1, parcellation.shape[1]-1):
-            for k in range(1, parcellation.shape[2]-1):
-                v = parcellation[i,j,k]
+    newdata = np.zeros(wc.shape)
+    for i in range(1, wc.shape[0]-1):
+        for j in range(1, wc.shape[1]-1):
+            for k in range(1, wc.shape[2]-1):
+                v = wc[i,j,k]
                 if v > 0:
                     max_diff = 0
                     for n in neighbors:
-                        nv = parcellation[i+n[0],j+n[1],k+n[2]]
+                        nv = wc[i+n[0],j+n[1],k+n[2]]
                         if v==1 and nv==max_parcel or v==max_parcel and nv==1: # ignore jumps between first and last parcel
                             continue
                         if nv > 0:
