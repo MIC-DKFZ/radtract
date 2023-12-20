@@ -48,7 +48,7 @@ Installation should complete within a few seconds.
 
 ## Examples
 
-A complete pipeline example can be found in example.ipynb 
+A complete pipeline example can be found in [example.ipynb](https://github.com/MIC-DKFZ/radtract/blob/main/example.ipynb). 
 
 Further examples can be found in the RadTract test script `tests\test_radtract.py`. Test data is included in `tests\test_data`.
 
