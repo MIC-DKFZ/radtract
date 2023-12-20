@@ -22,6 +22,7 @@ from radtract.tractdensity import tract_envelope
 from radtract.utils import load_trk_streamlines, save_as_vtk_fib, save_trk_streamlines, is_inside
 from fury.colormap import distinguishable_colormap
 import joblib
+import pandas as pd
 
 
 def estimate_num_parcels(streamlines: nib.streamlines.array_sequence.ArraySequence,
@@ -32,7 +33,7 @@ def estimate_num_parcels(streamlines: nib.streamlines.array_sequence.ArraySequen
     :param streamlines: input streamlines
     :param reference_image: us this image geometry
     :param num_voxels: desired parcel size in tract direction
-    :return:
+    :return: estimated number of parcels
     """
     print('Estimating number of possible parcels for on average ' + str(num_voxels) + ' traversed voxels per parcel.')
     average_spacing = np.mean(reference_image.header['pixdim'][1:4])
@@ -213,43 +214,6 @@ def reorient_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequen
                 oriented_streamlines.append(streamlines[idx])
             idx += 1
         return oriented_streamlines
-
-
-def batch_parcellate_tracts(streamlines: list,
-                            binary_envelopes: list,
-                            num_parcels: list,
-                            start_regions: list,
-                            out_parcellation_filenames: list,
-                            parcellation_type: str = 'hyperplane',
-                            dilate_envelope: bool = False,
-                            close_envelope: bool = True,
-                            postprocess: bool = False
-                            ):
-    """
-    Convenience function to parcellate multiple tracts.
-    :param streamlines:
-    :param binary_envelopes:
-    :param num_parcels:
-    :param start_regions:
-    :param out_parcellation_filenames:
-    :param parcellation_type:
-    :param dilate_envelope:
-    :param close_envelope:
-    :param postprocess:
-    :return:
-    """
-    if not (len(streamlines) == len(binary_envelopes) == len(num_parcels) == len(start_regions) == len(out_parcellation_filenames)):
-        raise ValueError('All inputs must have the same length.')
-    for i in range(len(streamlines)):
-        parcellate_tract(streamlines=streamlines[i],
-                         binary_envelope=binary_envelopes[i],
-                         num_parcels=num_parcels[i],
-                         start_region=start_regions[i],
-                         parcellation_type=parcellation_type,
-                         dilate_envelope=dilate_envelope,
-                         close_envelope=close_envelope,
-                         out_parcellation_filename=out_parcellation_filenames[i],
-                         postprocess=postprocess)
 
 
 def predict_points(argstuple):
@@ -697,10 +661,10 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             nib.save(new_envelope, out_parcellation_filename.replace('.nii.gz', '_envelope.nii.gz'))
 
         if reference_streamline is not None:
-            save_trk_streamlines(streamlines=[reference_streamline], filename=out_parcellation_filename.replace('.nii.gz', '_reference_streamline.trk'), reference_image=binary_envelope)
+            save_trk_streamlines(streamlines=[reference_streamline], filename=out_parcellation_filename.replace('.nii.gz', '_reference_streamline.trk'), reference=binary_envelope)
 
         if reduced_streamlines is not None:
-            save_trk_streamlines(streamlines=reduced_streamlines, filename=out_parcellation_filename.replace('.nii.gz', '_reduced_streamlines.trk'), reference_image=binary_envelope)
+            save_trk_streamlines(streamlines=reduced_streamlines, filename=out_parcellation_filename.replace('.nii.gz', '_reduced_streamlines.trk'), reference=binary_envelope)
 
         if colors is not None:
             colors_file_name = out_parcellation_filename.replace('.nii.gz', '_colored.fib')
@@ -712,6 +676,52 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
     return parcellation, reference_streamline, reduced_streamlines, svc
 
+
+def num_parcels_for_set():
+    """
+    Entry point for command line tool to estimate the number of parcels for a set of tracts and write the result to a csv file.
+    """
+
+    parser = argparse.ArgumentParser(description='RadTract Tract Estimate Number of Parcels')
+    parser.add_argument('--tract_files', type=str, nargs='+', help='List of input tract files (.trk)')
+    parser.add_argument('--image_files', type=str, nargs='+', help='List of reference images (.nii.gz)')
+    parser.add_argument('--num_voxels', type=int, help='Desired parcel size (in voxels) in tract direction', default=5)
+    parser.add_argument('--output', type=str, help='Output csv file')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+
+    args = parser.parse_args()
+
+    tract_files = args.tract_files
+    image_files = args.image_files
+    out_file = args.output
+    num_voxels = args.num_voxels
+
+    if num_voxels is None or num_voxels < 1:
+        raise Exception('num_voxels must be > 0')
+
+    if len(tract_files) != len(image_files):
+        raise Exception('Number of tract files and number of reference images must be equal.')
+    
+    results = dict()
+    results['tract_file'] = []
+    results['image_file'] = []
+    results['num_parcels'] = []
+    
+    for s, i in zip(tract_files, image_files):
+        print('Estimating number of parcels for ' + s)
+        results['tract_file'].append(s)
+        results['image_file'].append(i)
+        s = load_trk_streamlines(s)
+        i = nib.load(i)
+        n = estimate_num_parcels(s, i, num_voxels)
+        results['num_parcels'].append(n)
+    
+    print('Writing results to ' + out_file)
+    df = pd.DataFrame(results)
+    df.to_csv(out_file, index=False)
 
 def main():
 

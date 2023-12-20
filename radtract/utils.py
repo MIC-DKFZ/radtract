@@ -5,7 +5,7 @@
 from dipy.io.streamline import load_trk, save_trk
 from fury.io import save_polydata
 from fury.utils import lines_to_vtk_polydata, numpy_to_vtk_colors
-from dipy.io.stateful_tractogram import Space, StatefulTractogram
+from dipy.io.stateful_tractogram import Space, StatefulTractogram, logger
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,12 +21,18 @@ import zipfile
 import uuid
 
 
-def save_trk_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence, filename: str, reference_image: nib.Nifti1Image):
+def save_trk_streamlines(streamlines: nib.streamlines.array_sequence.ArraySequence, filename: str, reference):
     """
     Convenience function to save streamlines to a trk file
     :param filename: filename of trk file
-    """
-    fib = StatefulTractogram(streamlines, reference_image, Space.RASMM)
+    """    
+    if type(reference) == StatefulTractogram:
+        logger.setLevel('ERROR')
+        fib = StatefulTractogram(streamlines, reference, space=reference.space, origin=reference.origin)
+    elif type(reference) == nib.Nifti1Image:
+        fib = StatefulTractogram(streamlines, reference, Space.RASMM)
+    else:
+        raise ValueError('Reference has to be either a StatefulTractogram or a Nifti1Image.')
     save_trk(fib, filename, bbox_valid_check=False)
 
 
@@ -37,6 +43,7 @@ def load_trk_streamlines(filename: str):
     :return: streamlines in dipy format
     """
     fib = load_trk(filename, "same", bbox_valid_check=False)
+    
     streamlines = fib.streamlines
     return streamlines
 
@@ -92,7 +99,7 @@ def plot_parcellation(nifti_file, mip_axis, slice=0.5, thickness=0, out_file=Non
 
 def estimate_ci(y_true, y_scores):
     """
-    Estimates the confidence interval for a ROC curve.
+    Estimates the confidence interval for a ROC curve using the standard error.
     :param y_true: true labels
     :param y_scores: predicted scores
     :return: confidence interval size, AUROC score

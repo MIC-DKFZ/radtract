@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radtract"
-version = "0.1.16"
+version = "0.1.17"
 authors = [
   { name="Peter Neher", email="p.neher@dkfz-heidelberg.de" },
 ]
@@ -48,8 +48,16 @@ Repository = "https://github.com/MIC-DKFZ/radtract"
 
 [project.scripts]
 radtract_parcellate = "radtract.parcellation:main"
+radtract_estimate_num_parcels = "radtract.parcellation:num_parcels_for_set"
 radtract_features = "radtract.features:main"
 radtract_tdi = "radtract.tractdensity:main"
+
+radtract_filter_density = "radtract.tractfiltering:density_filter_cmdentry"
+radtract_filter_visitationcount = "radtract.tractfiltering:visitation_count_filter_cmdentry"
+radtract_filter_maskoverlap = "radtract.tractfiltering:mask_overlap_filter_cmdentry"
+radtract_filter_endpoints = "radtract.tractfiltering:endpoint_filter_cmdentry"
+radtract_filter_length = "radtract.tractfiltering:length_filter_cmdentry"
+radtract_filter_curvature = "radtract.tractfiltering:curvature_filter_cmdentry"
 
 [tool.setuptools.package-data]
 radtract = ["*.yaml"]

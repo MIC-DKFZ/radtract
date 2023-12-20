@@ -96,18 +96,33 @@ def tract_envelope(streamlines: nib.streamlines.array_sequence.ArraySequence,
     :param out_image_filename: if not None, the output image will be saved to this file
     :return:
     """
-    return tract_density(streamlines, reference_image, True, do_closing, out_image_filename)
+    return tract_density(streamlines, reference_image, binary=True, do_closing=do_closing, out_image_filename=out_image_filename)
+
+
+def visitation_count(streamlines: nib.streamlines.array_sequence.ArraySequence,
+                     reference_image: nib.Nifti1Image,
+                     out_image_filename: str = None):
+    """
+    Convenience function for tract_density that calculates the visitation count image.
+    :param streamlines: input streamlines
+    :param reference_image: defines geometry of output image
+    :param out_image_filename: if not None, the output image will be saved to this file
+    """
+    return tract_density(streamlines, reference_image, visitation_count=True, out_image_filename=out_image_filename)
+                     
 
 
 def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # input streamlines
-                   reference_image: nib.Nifti1Image, # defines geometry of output image
-                   binary: bool = False, # if true, the output image will be a binary image with 1 for voxels that are part of the bundle and 0 outside
-                   do_closing: bool = False, # morphological closing of the binary image to remove holes
-                   out_image_filename: str = None): # if not None, the output image will be saved to this file
+                  reference_image: nib.Nifti1Image, # defines geometry of output image
+                  visitation_count: bool = False, # if true, the output image will contain the number of times a voxel was visited by a streamline, not the accumulated lengths of the streamline segments in the voxel
+                  binary: bool = False, # if true, the output image will be a binary image with 1 for voxels that are part of the bundle and 0 outside
+                  do_closing: bool = False, # morphological closing of the binary image to remove holes
+                  out_image_filename: str = None): # if not None, the output image will be saved to this file
     """
     Calculate the tract density image for a set of streamlines using the true length of each streamline segment in each voxel.
     :param streamlines: input streamlines
     :param reference_image: defines geometry of output image
+    :param visitation_count: if true, the output image will contain the number of times a voxel was visited by a streamline, not the accumulated lengths of the streamline segments in the voxel
     :param binary: if true, the output image will be a binary image with 1 for voxels that are part of the bundle and 0 outside
     :param do_closing: morphological closing of the binary image to remove holes
     :param out_image_filename: if not None, the output image will be saved to this file
@@ -148,6 +163,8 @@ def tract_density(streamlines: nib.streamlines.array_sequence.ArraySequence, # i
                 if is_inside(seg[0], image_data):
                     if binary:
                         image_data[seg[0][0], seg[0][1], seg[0][2]] = 1
+                    elif visitation_count:
+                        image_data[seg[0][0], seg[0][1], seg[0][2]] += 1
                     else:
                         image_data[seg[0][0], seg[0][1], seg[0][2]] += seg[1]
 
