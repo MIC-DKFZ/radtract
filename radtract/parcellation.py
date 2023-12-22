@@ -570,14 +570,14 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
                     print('\033[91mWARNING: empty parcel ' + str(i) + 'in file ' + out_parcellation_filename + '\033[0m')
                     print('\033[91mCheck input tract, empty parcels are often cause by broken tracts!\033[0m')
 
-        # check if parcellation has large gradient in 6-face neighborhood, i.e. if there are large jumps between neighboring parcels
-        gimg = check_gradient(envelope_data)
-        g = np.max(gimg)
-        if g > 1:
-            print('\033[91mWARNING: Parcellation jumps between neighboring parcels (max label difference ' + str(g) +'). Please check your data.\033[0m')
-            if save_intermediate_files:
-                gimg = nib.Nifti1Image(gimg, affine=binary_envelope.affine)
-                nib.save(gimg, out_parcellation_filename.replace('.nii.gz', '_gradient.nii.gz'))
+        # # check if parcellation has large gradient in 6-face neighborhood, i.e. if there are large jumps between neighboring parcels
+        # gimg = check_gradient(envelope_data)
+        # g = np.max(gimg)
+        # if g > 1:
+        #     print('\033[91mWARNING: Parcellation jumps between neighboring parcels (max label difference ' + str(g) +'). Please check your data.\033[0m')
+        #     if save_intermediate_files:
+        #         gimg = nib.Nifti1Image(gimg, affine=binary_envelope.affine)
+        #         nib.save(gimg, out_parcellation_filename.replace('.nii.gz', '_gradient.nii.gz'))
 
         # check if streamline start and end points have same label
         # check if there are a lot of voxels not covered by the tract
