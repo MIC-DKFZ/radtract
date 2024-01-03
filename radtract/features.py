@@ -2,7 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from radiomics import featureextractor
+import radiomics
+import mirp
 import pandas as pd
 import os
 import nibabel as nib
@@ -16,157 +17,208 @@ from cmdint.Utils import ProgressBar
 import sys
 
 
-def map_check(data: np.ndarray,
-              extractor_settings: dict = None):
-    '''
-    :param map: Path to the map
-    :param extractor_settings: Settings for the pyradiomics feature extractor
-    '''
-    data = np.nan_to_num(data)
-    range = np.max(data) - np.min(data)
-    robust_range = np.percentile(data, 99) - np.percentile(data, 1)
-
-    print('Checking map ...')
-
-    if extractor_settings is not None and extractor_settings['normalize'] == 'true':
-        print('Map is being normalized. Please make sure that your bin with is set accordingly.')
-        return
-
-    num_bins = range / extractor_settings['binWidth']
-    print('Map range: ', range)
-    print('Robust map range (99 percentile): ', robust_range)
-    print('Bin width: ', extractor_settings['binWidth'])
-    print('Number of bins: ', num_bins)
-
-    if num_bins < 16 or num_bins > 128:
-        print('Number of bins is not in the recommended range of 16-128.')
-        print('Consider normalizing the map or adjust the binWidth in the pyrad.yaml parameter file.')
-        print('Suggestion for bin width (50 bins), based on the map range: ' + str(range / 50) + '.')
-        print('Suggestion for bin width (50 bins), based on the robust map range: ' + str(robust_range / 50) + '.')
-    else:
-        print('Map range is OK: ', range)
+def get_version():
+    path = os.path.dirname(os.path.abspath(__file__))
+    with open(path + '/__init__.py', 'r') as file:
+        content = file.read()
+        version = content.split('__version__ = ')[1].split('\n')[0].replace("'", '')
+        return version
 
 
-def batch_calc_radiomics(parcellation_file_names: list,
-                         parameter_map_file_names: list,
-                         out_csv_files: list):
-    """
-    Calculate radiomics features for a list of parcellations and parameter maps
-    :param parcellation_file_names: list of parcellation files
-    :param parameter_map_file_names: list of parameter maps
-    :param out_csv_files: save features to these files
-    """
-    assert len(parcellation_file_names) == len(parameter_map_file_names)
-    assert len(parcellation_file_names) == len(out_csv_files)
-    for i in range(len(parcellation_file_names)):
-        calc_radiomics(parcellation_file_names[i], parameter_map_file_names[i], out_csv_files[i])
+class Extractor:
+
+    def __init__(self, num_parcels: int = None) -> None:
+        self.num_parcels = num_parcels
+        
+        self.features = pd.DataFrame({'map': [], 
+                                        'parcellation': [], 
+                                        'parcel': [], 
+                                        'filter': [], 
+                                        'feature': [], 
+                                        'value': [], 
+                                        'extractor': [], 
+                                        'extractor_version': [],
+                                        'radtract_version': []})
+        
+    def init_features(self):
+        print('Initializing features dataframe ...')
+        self.features = pd.DataFrame({'map': [], 
+                                        'parcellation': [], 
+                                        'parcel': [], 
+                                        'filter': [], 
+                                        'feature': [], 
+                                        'value': [], 
+                                        'extractor': [], 
+                                        'extractor_version': [],
+                                        'radtract_version': []})
+
+    def calc_radiomics(self, parcellation_file_name: str, parameter_map_file_name: str):
+        raise NotImplementedError
 
 
-def calc_radiomics(parcellation_file_name: str,
-                   parameter_map_file_name: str,
-                   out_csv_file: str,
-                   num_parcels: int = None,
-                   features: dict = None,
-                   pyrad_params=None,
-                   remove_paths: bool = False):
-    """
-    Calculate radiomics features for a parcellation and a matching parameter map using pyradiomcs
-    :param parcellation_file_name:
-    :param parameter_map_file_name:
-    :param out_csv_file: save features to this file
-    :param num_parcels: optional to ensure that all labels are present in the parcellation
-    :param features: append new features to this dict, if none, create empty dict
-    :param pyrad_params: if none, use default parameter file (designed for FA maps)
-    :param remove_paths: remove paths from feature file
-    :return: features dict
-    """
-    if pyrad_params is not None:
-        extractor = featureextractor.RadiomicsFeatureExtractor(pyrad_params)
-    else:
-        extractor = featureextractor.RadiomicsFeatureExtractor(os.path.dirname(__file__) + '/pyrad.yaml')
-    print('Pyradiomics settings:', extractor.settings)
-    print('Enabled image types:', extractor.enabledImagetypes)
-    print('Enables features:', extractor.enabledFeatures)
+class PyradiomicsExtractor(Extractor):
 
-    if features is None:
-        features = dict()
-        features['map'] = []
-        features['parcellation'] = []
-        features['parcel'] = []
+    remove_paths = False
 
-    map_sitk, parc_sitk = extractor.loadImage(parameter_map_file_name, parcellation_file_name)
-    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
-
-    map_check(sitk.GetArrayFromImage(map_sitk), extractor.settings)
-
-    labels = np.unique(parcellation_data)
-    print('Found labels', labels)
-    if num_parcels is not None:
-        assert num_parcels == len(
-            labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
-
-    # get global features
-    print('pyradiomics generating global tract features')
-    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
-    parcellation_data[parcellation_data > 0] = 1
-    env_sitk = sitk.GetImageFromArray(parcellation_data)
-    env_sitk.CopyInformation(parc_sitk)
-    feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=env_sitk)
-    print('pyradiomics formatting results ...')
-    if remove_paths:
-        features['map'].append(os.path.basename(parameter_map_file_name))
-        features['parcellation'].append(os.path.basename(parcellation_file_name))
-    else:
-        features['map'].append(parameter_map_file_name)
-        features['parcellation'].append(parcellation_file_name)
-    features['parcel'].append('GLOBAL')
-    for featureName in feature_vector.keys():
-        try:
-            val = float(feature_vector[featureName])
-            if featureName not in features.keys():
-                features[featureName] = []
-            features[featureName].append(val)
-        except Exception:
-            pass
-
-    # features per label
-    for label in labels:
-        label = int(label)
-        if label == 0:
-            continue
-        print('pyradiomics processing label ' + str(label))
-        feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=parc_sitk, label=label)
-        print('pyradiomics formatting results ...')
-        if remove_paths:
-            features['map'].append(os.path.basename(parameter_map_file_name))
-            features['parcellation'].append(os.path.basename(parcellation_file_name))
+    def __init__(self, pyrad_params=None, remove_paths = False) -> None:
+        super().__init__()
+        if pyrad_params is not None:
+            self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(pyrad_params)
         else:
-            features['map'].append(parameter_map_file_name)
-            features['parcellation'].append(parcellation_file_name)
-        features['parcel'].append('P' + str(label))
-        for featureName in feature_vector.keys():
-            try:
-                val = float(feature_vector[featureName])
-                if featureName not in features.keys():
-                    features[featureName] = []
-                features[featureName].append(val)
-            except Exception:
-                pass
+            self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(os.path.dirname(__file__) + '/pyrad.yaml')
+        
+        self.remove_paths = remove_paths
 
-    if out_csv_file is not None:
-        if not out_csv_file.endswith('.csv'):
-            out_csv_file += '.csv'
-        print('pyradiomics saving results ...')
-        features_df = pd.DataFrame(features)
-        features_df.to_csv(out_csv_file, index=False)
-    print('pyradiomics finished processing')
+    def map_check(self, data: np.ndarray, extractor_settings: dict = None):
+        '''
+        :param map: Path to the map
+        :param extractor_settings: Settings for the pyradiomics feature extractor
+        '''
+        data = np.nan_to_num(data)
+        range = np.max(data) - np.min(data)
+        robust_range = np.percentile(data, 99) - np.percentile(data, 1)
 
-    return features
+        print('Checking map ...')
+
+        if extractor_settings is not None and extractor_settings['normalize'] == 'true':
+            print('Map is being normalized. Please make sure that your bin with is set accordingly.')
+            return
+
+        num_bins = range / extractor_settings['binWidth']
+        print('Map range: ', range)
+        print('Robust map range (99 percentile): ', robust_range)
+        print('Bin width: ', extractor_settings['binWidth'])
+        print('Number of bins: ', num_bins)
+
+        if num_bins < 16 or num_bins > 128:
+            print('Number of bins is not in the recommended range of 16-128.')
+            print('Consider normalizing the map or adjust the binWidth in the pyrad.yaml parameter file.')
+            print('Suggestion for bin width (50 bins), based on the map range: ' + str(range / 50) + '.')
+            print('Suggestion for bin width (50 bins), based on the robust map range: ' + str(robust_range / 50) + '.')
+        else:
+            print('Map range is OK: ', range)
+
+    def output_to_df(self, features, parcellation_file_name: str, parameter_map_file_name: str, parcel: str):
+
+        # feature_vector is a dict with all features
+        # convert this dict to a df with the dict keys as one column and the values as another column
+        # then split the key column into two columns (filter and feature)
+        # then add the parcel column
+        # then append to self.features
+        # then return self.features
+
+        f = dict()
+        f['filter'] = []
+        f['feature'] = []
+        f['value'] = []
+        for key, value in features.items():
+            filter = key.split('_')[0]
+            feature = key.replace(filter + '_', '')
+            f['filter'].append(filter)
+            f['feature'].append(feature)
+            f['value'].append(value)
+
+        features_df = pd.DataFrame(f)
+        features_df['extractor'] = 'pyradiomics'
+        features_df['extractor_version'] = radiomics.__version__
+        features_df['radtract_version'] = get_version()
+
+        if self.remove_paths:
+            features_df['map'] = os.path.basename(parameter_map_file_name)
+            features_df['parcellation'] = os.path.basename(parcellation_file_name)
+        else:
+            features_df['map'] = parameter_map_file_name
+            features_df['parcellation'] = parcellation_file_name
+        features_df['parcel'] = parcel
+        self.features = pd.concat([self.features, features_df], axis=0)
+
+
+    def calc_radiomics(self, parcellation_file_name: str, parameter_map_file_name: str):
+            
+            self.init_features()
+            
+            print('Pyradiomics settings:', self.extractor.settings)
+            print('Enabled image types:', self.extractor.enabledImagetypes)
+            print('Enables features:', self.extractor.enabledFeatures)
+
+            map_sitk, parc_sitk = self.extractor.loadImage(parameter_map_file_name, parcellation_file_name)
+            parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+
+            self.map_check(sitk.GetArrayFromImage(map_sitk), self.extractor.settings)
+
+            labels = np.unique(parcellation_data)
+            print('Found labels', labels)
+            if self.num_parcels is not None:
+                assert self.num_parcels == len(labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+            # get global features
+            print('pyradiomics calculating global tract features')
+            parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+            parcellation_data[parcellation_data > 0] = 1
+            env_sitk = sitk.GetImageFromArray(parcellation_data)
+            env_sitk.CopyInformation(parc_sitk)
+
+            self.output_to_df(self.extractor.execute(imageFilepath=map_sitk, maskFilepath=env_sitk),
+                              parcellation_file_name, parameter_map_file_name, 'GLOBAL')
+            
+
+            # features per label
+            for label in labels:
+                label = int(label)
+                if label == 0:
+                    continue
+                print('pyradiomics processing parcel ' + str(label))
+                self.output_to_df(self.extractor.execute(imageFilepath=map_sitk, maskFilepath=parc_sitk, label=label),
+                                  parcellation_file_name, parameter_map_file_name, 'P' + str(label))
+
+            print('pyradiomics finished processing')
+
+            return self.features
+    
+
+class MirpExtractor(Extractor):
+
+    def calc_radiomics(self, parcellation_file_name: str, parameter_map_file_name: str, features: dict = None):
+
+        if features is None:
+            features = dict()
+            features['map'] = []
+            features['parcellation'] = []
+            features['parcel'] = []
+
+        
+        parcellation_data = nib.load(parcellation_file_name).get_fdata()
+
+        labels = np.unique(parcellation_data)
+        print('Found labels', labels)
+        if self.num_parcels is not None:
+            assert self.num_parcels == len(labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+        # features per label
+        # for label in labels:
+        #     label = int(label)
+        #     if label == 0:
+        #         continue
+
+        #     mask = np.zeros(parcellation_data.shape)
+        #     mask[parcellation_data == label] = 1
+
+        #     print('pyradiomics processing label ' + str(label))
+        #     features = extract_features(image=map_data, mask=mask, base_discretisation_method="fixed_bin_number", base_discretisation_n_bins=32, export_features=True, )
+        features = mirp.extract_features(image=parameter_map_file_name, 
+                                         mask=parcellation_file_name, 
+                                         base_discretisation_method="fixed_bin_number", 
+                                         base_discretisation_n_bins=32, 
+                                         export_features=True, 
+                                         num_cpus=16)
+        print('mirp finished processing')
+
+        return features
 
 
 def calc_tractometry(point_label_file_name: str,
                      parameter_map_file_name: str,
-                     out_csv_file: str,
+                     out_csv_file: str = None,
                      features: dict = None,
                      num_parcels: int = None):
     """
@@ -324,6 +376,19 @@ def load_features(feature_file_names: list, select=[], drop=[], expected_parcels
 
 
 def main():
+
+    extractor = PyradiomicsExtractor()
+    bla = extractor.calc_radiomics(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
+                                   parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz',)
+
+    # for el in bla:
+    #     print(el.columns)
+    print(bla.shape)
+    bla.to_csv('/home/neher/Downloads/test.csv')
+    bla.to_pickle('/home/neher/Downloads/test.pkl')
+
+
+    return
 
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
