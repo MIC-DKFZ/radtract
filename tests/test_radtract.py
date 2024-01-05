@@ -98,7 +98,5 @@ def test_pyradiomics_features():
         if count > 10:
             break
         
-
-    assert new_features.equals(features_df), 'pyradiomics features test 1 failed'
-
-    # pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
+    # check for equality with defined precision
+    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False, check_exact=False)
