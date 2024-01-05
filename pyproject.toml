@@ -30,12 +30,13 @@ dependencies = [
     'vtk',
     'dipy',
     'pyradiomics',
+    'mirp; python_version>="3.11"',
     'cmdint',
     'fury',
     'seaborn'
 ]
 license = { file="LICENSES/Apache-2.0.txt" }
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.12"
 
 classifiers = [
     'Programming Language :: Python :: 3',

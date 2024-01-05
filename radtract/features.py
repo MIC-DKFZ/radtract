@@ -111,8 +111,8 @@ class PyradiomicsExtractor(Extractor):
     Extract features using the pyradiomics package (https://pyradiomics.readthedocs.io/en/latest/)
     """
 
-    def __init__(self, pyrad_params=None) -> None:
-        super().__init__()
+    def __init__(self, num_parcels: int = None, pyrad_params=None) -> None:
+        super().__init__(num_parcels = num_parcels)
         if pyrad_params is not None:
             self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(pyrad_params)
         else:
@@ -226,6 +226,8 @@ class PyradiomicsExtractor(Extractor):
 
             # drop where filter == 'diagnostic'
             self.features = self.features[self.features['filter'] != 'diagnostics']
+            # reset index
+            self.features = self.features.reset_index(drop=True)
 
             return self.features
     
@@ -237,6 +239,9 @@ if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
         """
         Extract features using the mirp package (https://github.com/oncoray/mirp/)
         """
+
+        def __init__(self, num_parcels: int = None) -> None:
+            super().__init__(num_parcels = num_parcels)
 
         def calc_features(self, parcellation_file_name: str, parameter_map_file_name: str):
 
@@ -316,6 +321,7 @@ if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
                     features['feature'].append(feature)
                     features['value'].append(row[column])
             features = pd.DataFrame(features)
+            self.features = self.features.reset_index(drop=True)
 
             print('mirp finished processing')
 
@@ -330,6 +336,9 @@ class TractometryExtractor(Extractor):
     """
     Extract features using tractometry
     """
+
+    def __init__(self, num_parcels: int = None) -> None:
+        super().__init__(num_parcels = num_parcels)
 
     def calc_features(self,
                       parcellation_file_name: str,
@@ -410,42 +419,14 @@ class TractometryExtractor(Extractor):
                 features['value'].append(func(vals_per_parcel[parcel]))
 
         self.features = pd.DataFrame(features)
+        self.features = self.features.reset_index(drop=True)
+        
         print('tractometry finished processing')
 
         return self.features
 
 
 def main():
-
-    # # # extractor = PyradiomicsExtractor()
-    # # # bla = extractor.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
-    # # #                               parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz',)
-    # # # bla.to_pickle('/home/neher/Downloads/test.pkl')
-    # # # bla.to_csv('/home/neher/Downloads/test.csv')
-    
-    # tractometry = TractometryExtractor()
-    # bla = tractometry.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_tractometry.pkl',
-    #                                  parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz')
-    # bla.to_csv('/home/neher/Downloads/tractometry.csv')
-
-    # # mirpextractor = MirpExtractor()
-    # # bla = mirpextractor.calc_features(parcellation_file_name='//home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
-    # #                                     parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz')
-    # # bla.to_csv('/home/neher/Downloads/mirp.csv')
-
-
-    # # # bla = pd.read_pickle('/home/neher/Downloads/test.pkl')
-    # # # bla2 = Extractor.flatten_features(bla)
-
-    # # #print(bla.shape)
-    # # # print(bla2.shape)
-
-    # # # for el in bla2.columns:
-    # # #     print(el)
-
-    # return
-
-    # # to-do adjust tests and prediction script
 
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')

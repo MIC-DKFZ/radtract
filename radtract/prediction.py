@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from radtract.features import load_features
+from radtract.features import Extractor
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold
 from sklearn.feature_selection import SelectKBest, f_regression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -75,6 +75,35 @@ def drop_nan_features(features_df):
     features_df = features_df.dropna(axis=1)
     print('Num. features', features_df.shape[1])
     return features_df
+
+
+def load_features(feature_files, verbose=True, remove_map_substrings=[], select=[], drop=[]):
+
+    out_df = None
+    for feature_file in feature_files:
+        
+        if feature_file.endswith('.csv'):
+            df = pd.read_csv(feature_file)
+        elif feature_file.endswith('.pkl'):
+            df = pd.read_pickle(feature_file)
+
+        df = Extractor.flatten_features(df)
+        
+        out_df = pd.concat([out_df, df], axis=1)
+    
+    # remove all substrings in remove_map_substrings from feature names
+    if len(remove_map_substrings) > 0:
+        for remove_map_substring in remove_map_substrings:
+            out_df['feature'] = out_df['feature'].str.replace(remove_map_substring, '')
+    
+    # select features containing any of select substrings
+    if len(select) > 0:
+        out_df = out_df.loc[out_df['feature'].str.contains('|'.join(select))]
+
+    # drop features containing any of drop substrings
+    if len(drop) > 0:
+        out_df = out_df.loc[~out_df['feature'].str.contains('|'.join(drop))]
+
 
 
 def run_cv_experiment(feature_files, targets, remove_map_substrings=[], n_jobs=-1, select = [], drop = [], remove_low_variance=True, remove_correlated=True, kbest_features=0, folds=0):
