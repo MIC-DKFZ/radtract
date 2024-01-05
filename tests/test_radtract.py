@@ -77,16 +77,8 @@ def test_pyradiomics_features():
     new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
     new_features.to_pickle(get_results_path() + 'hyperplane_features.pkl')
 
-    # print pandas version
-    print('pandas version', pd.__version__)
-    print(new_features.equals(features_df))
-
-    # print first three rows of both dataframes, only values
-    print(new_features.head(3))
-    print(features_df.head(3))
-
-    # print vlaues that are different between the two dataframes
-    print(new_features.values != features_df.values)
-
+    # drop 'extractor_version' and 'radtract_version' columns
+    new_features = new_features.drop(columns=['extractor_version', 'radtract_version'])
+    features_df = features_df.drop(columns=['extractor_version', 'radtract_version'])
 
     pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
