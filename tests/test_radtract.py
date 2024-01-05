@@ -78,9 +78,7 @@ def test_hyperplane_features():
     print('new_features.shape', new_features.shape)
     print('features_df.shape', features_df.shape)
 
-    np.testing.assert_array_equal(new_features.values, features_df.values)
-
-    # pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
+    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
 
 
 def test_centerline_features():
