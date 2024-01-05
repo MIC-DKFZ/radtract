@@ -77,4 +77,7 @@ def test_pyradiomics_features():
     new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
     new_features.to_pickle(get_results_path() + 'hyperplane_features.pkl')
 
+    # print pandas version
+    print('pandas version', pd.__version__)
+
     pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
