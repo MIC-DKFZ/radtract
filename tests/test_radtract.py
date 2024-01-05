@@ -89,9 +89,15 @@ def test_pyradiomics_features():
     print(new_features.head(3))
     print(features_df.head(3))
 
-    for i, j in np.ndindex(new_features.shape):
-        dpercent = abs(1.0 - new_features.iloc[i, j] / features_df.iloc[i, j])
-        assert dpercent < 1.0e-5, 'element ' + str(i) + ', ' + str(j) + ' differs by ' + str(dpercent) + ' from reference'
+    tmp1 = new_features.drop(columns=['value'])
+    tmp2 = features_df.drop(columns=['value'])
+    pd.testing.assert_frame_equal(tmp1, tmp2, check_dtype=False)
+    
+    i = 0
+    for el1, el2 in zip(new_features['value'], features_df['value']):
+        dpercent = abs(1.0 - el1 / el2)
+        assert dpercent < 1.0e-5, 'value ' + str(i) + ', ' + str(i) + ' differs by ' + str(dpercent) + ' from reference'
+        i += 1
         
     # check for equality with defined precision
     # pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False, check_exact=False)
