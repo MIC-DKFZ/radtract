@@ -7,7 +7,6 @@ import pandas as pd
 from radtract import parcellation, features, tractdensity
 import nibabel as nib
 import os
-import joblib
 
 
 def load_data():
@@ -56,7 +55,7 @@ def test_hyperplane_parcellation():
     assert np.equal(new_parcellation.get_fdata(), hyperplane_parcellation.get_fdata()).all(), 'hyperplane parcellation test 2 failed'
 
 
-def test_num_parcel_esimation():
+def test_num_parcel_estimation():
     streamlines, beginnings, _, _, _ = load_data()
 
     num = parcellation.estimate_num_parcels(streamlines=streamlines,
@@ -98,3 +97,16 @@ def test_pyradiomics_features():
         dpercent = abs(1.0 - el1 / el2)
         assert dpercent < 1.0e-5, 'value ' + str(i) + ', ' + str(i) + ' differs by ' + str(dpercent) + ' from reference'
         i += 1
+
+def test_mirp_features():
+    data_folder = os.path.dirname(__file__) + '/test_data/'
+    features_df = pd.read_pickle(data_folder + 'mirp_features.pkl')
+    pyrad_extractor = features.MirpExtractor(num_parcels=1)
+    new_features = pyrad_extractor.calc_features(parcellation_file_name=data_folder + 'test_tract_envelope.nii.gz',
+                                                 parameter_map_file_name=data_folder + 'test_map.nii.gz'
+                                                )
+    # remove path from 'map' and 'parcellation' columns
+    new_features['map'] = new_features['map'].str.split('/').str[-1]
+    new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
+    new_features.to_pickle(get_results_path() + 'mirp_features.pkl')
+    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)

@@ -8,18 +8,20 @@ SPDX-License-Identifier: Apache-2.0
 
 Copyright © German Cancer Research Center (DKFZ), [Division of Medical Image Computing (MIC)](https://www.dkfz.de/en/mic/index.php). Please make sure that your usage of this code is in compliance with the code [license](https://github.com/MIC-DKFZ/radtract/blob/master/LICENSE).
 
-If you use RadTract, please cite our paper: `P. Neher, D. Hirjak, K. Maier-Hein. "Radiomic tractometry: a rich and tract-specific class of imaging biomarkers for neuroscience and medical applications", May 23, 2023. doi: https://doi.org/10.1101/2021.05.23.21257610`
+If you use RadTract, please cite our [paper](https://www.nature.com/articles/s41467-023-44591-3): `Neher, P., Hirjak, D. & Maier-Hein, K. Radiomic tractometry reveals tract-specific imaging biomarkers in white matter. Nat Commun 15, 303 (2024). https://doi.org/10.1038/s41467-023-44591-3`
 
 
 ## Overview
 
-Python package for radiomic tractometry (RadTract).
-RadTract enables the extraction of comprehensive and highly informative microstructural feature sets along individual white matter tracts suitable for subject-level predictions, where classic tractometry is limited to a vector of mean values per tract. 
+Python package for radiomic tractometry (RadTract). RadTract is a tool designed for tract-specific microstructural analysis of the brain’s white matter using diffusion MRI. It enhances traditional tractometry, which often misses valuable information due to its reliance on summary statistics and scalar values.
 
-For details about the approach, please refer to our paper [Radiomic tractometry: a rich and tract-specific class of imaging biomarkers for neuroscience and medical applications](https://doi.org/10.21203/rs.3.rs-2950610/v1).
-An overview of the method is shown in Figure 1.
+RadTract incorporates radiomics, a method that analyzes a multitude of quantitative image features beyond visual perception, into tractometry. This integration allows for improved predictive modeling while maintaining the localization capability of tractometry.
 
-![](resources/radtract_overview.png)_Figure 1: Illustration of the complete RadTract process. The points of a statically resampled tract (a) can be seen as samples of partly overlapping classes that are not linearly separable. We are aiming at finding the hyperplanes, superimposed as white lines on the tract in (a), that optimally separate the classes with the smallest amount of errors. This task can be solved using large-margin classifiers such as SVMs. This enables us to create parcellations directly in voxel-space (b) that do not suffer from projection-induced misassignments, as is the case in the centerline-based approach (d). For visualization purposes, the tract parcellation in voxel-space is projected back on the original streamlines (e). The proposed tract parcellation in voxel-space (b) is used to calculate 1106 features per parcel, visualized in (c). In the case of the CST example used in this figure, this results in 18,802 features for the complete tract. The calculated feature classes and used image filters are listed in (f). Figure from [Radiomic tractometry: a rich and tract-specific class of imaging biomarkers for neuroscience and medical applications](https://doi.org/10.21203/rs.3.rs-2950610/v1)._
+RadTract has demonstrated its effectiveness in diagnosing disease subgroups across various datasets and estimating demographic and clinical parameters in multiple clinical populations. It holds the potential to pioneer a new generation of tract-specific imaging biomarkers, benefiting a wide range of applications from basic neuroscience to medical research.
+
+For details about the approach, please refer to our [paper](https://www.nature.com/articles/s41467-023-44591-3): `Neher, P., Hirjak, D. & Maier-Hein, K. Radiomic tractometry reveals tract-specific imaging biomarkers in white matter. Nat Commun 15, 303 (2024). https://doi.org/10.1038/s41467-023-44591-3`. An overview of the method is shown in Figure 1.
+
+a multitude![](resources/radtract_overview.png)_Figure 1: Illustration of the complete RadTract process. The points of a statically resampled tract (a) can be seen as samples of partly overlapping classes that are not linearly separable. We are aiming at finding the hyperplanes, superimposed as white lines on the tract in (a), that optimally separate the classes with the smallest amount of errors. This task can be solved using large-margin classifiers such as SVMs. This enables us to create parcellations directly in voxel-space (b) that do not suffer from projection-induced misassignments, as is the case in the centerline-based approach (d). For visualization purposes, the tract parcellation in voxel-space is projected back on the original streamlines (e). The proposed tract parcellation in voxel-space (b) is used to calculate a multitude of radiomics features per parcel, visualized in (c). Exemplary feature classes and image filters available when using [pyradiomics](https://pyradiomics.readthedocs.io/en/latest/) as calculation engine are listed in (f). RadTract currently supports [MIRP](https://github.com/oncoray/mirp) as an alternative engine for calculating radiomics features.
 
 ## Installation
 
