@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from radiomics import featureextractor
+import radiomics
 import pandas as pd
 import os
 import nibabel as nib
@@ -12,315 +12,418 @@ import joblib
 from scipy.ndimage import map_coordinates
 from nibabel.affines import apply_affine
 import SimpleITK as sitk
-from cmdint.Utils import ProgressBar
+import sys
+import scipy
 import sys
 
 
-def map_check(data: np.ndarray,
-              extractor_settings: dict = None):
-    '''
-    :param map: Path to the map
-    :param extractor_settings: Settings for the pyradiomics feature extractor
-    '''
-    data = np.nan_to_num(data)
-    range = np.max(data) - np.min(data)
-    robust_range = np.percentile(data, 99) - np.percentile(data, 1)
-
-    print('Checking map ...')
-
-    if extractor_settings is not None and extractor_settings['normalize'] == 'true':
-        print('Map is being normalized. Please make sure that your bin with is set accordingly.')
-        return
-
-    num_bins = range / extractor_settings['binWidth']
-    print('Map range: ', range)
-    print('Robust map range (99 percentile): ', robust_range)
-    print('Bin width: ', extractor_settings['binWidth'])
-    print('Number of bins: ', num_bins)
-
-    if num_bins < 16 or num_bins > 128:
-        print('Number of bins is not in the recommended range of 16-128.')
-        print('Consider normalizing the map or adjust the binWidth in the pyrad.yaml parameter file.')
-        print('Suggestion for bin width (50 bins), based on the map range: ' + str(range / 50) + '.')
-        print('Suggestion for bin width (50 bins), based on the robust map range: ' + str(robust_range / 50) + '.')
-    else:
-        print('Map range is OK: ', range)
-
-
-def batch_calc_radiomics(parcellation_file_names: list,
-                         parameter_map_file_names: list,
-                         out_csv_files: list):
+def get_version():
     """
-    Calculate radiomics features for a list of parcellations and parameter maps
-    :param parcellation_file_names: list of parcellation files
-    :param parameter_map_file_names: list of parameter maps
-    :param out_csv_files: save features to these files
+    Get version of radtract package
     """
-    assert len(parcellation_file_names) == len(parameter_map_file_names)
-    assert len(parcellation_file_names) == len(out_csv_files)
-    for i in range(len(parcellation_file_names)):
-        calc_radiomics(parcellation_file_names[i], parameter_map_file_names[i], out_csv_files[i])
+    path = os.path.dirname(os.path.abspath(__file__))
+    with open(path + '/__init__.py', 'r') as file:
+        content = file.read()
+        version = content.split('__version__ = ')[1].split('\n')[0].replace("'", '')
+        return version
 
 
-def calc_radiomics(parcellation_file_name: str,
-                   parameter_map_file_name: str,
-                   out_csv_file: str,
-                   num_parcels: int = None,
-                   features: dict = None,
-                   pyrad_params=None,
-                   remove_paths: bool = False):
+class Extractor:
     """
-    Calculate radiomics features for a parcellation and a matching parameter map using pyradiomcs
-    :param parcellation_file_name:
-    :param parameter_map_file_name:
-    :param out_csv_file: save features to this file
-    :param num_parcels: optional to ensure that all labels are present in the parcellation
-    :param features: append new features to this dict, if none, create empty dict
-    :param pyrad_params: if none, use default parameter file (designed for FA maps)
-    :param remove_paths: remove paths from feature file
-    :return: features dict
-    """
-    if pyrad_params is not None:
-        extractor = featureextractor.RadiomicsFeatureExtractor(pyrad_params)
-    else:
-        extractor = featureextractor.RadiomicsFeatureExtractor(os.path.dirname(__file__) + '/pyrad.yaml')
-    print('Pyradiomics settings:', extractor.settings)
-    print('Enabled image types:', extractor.enabledImagetypes)
-    print('Enables features:', extractor.enabledFeatures)
-
-    if features is None:
-        features = dict()
-        features['map'] = []
-        features['parcellation'] = []
-        features['parcel'] = []
-
-    map_sitk, parc_sitk = extractor.loadImage(parameter_map_file_name, parcellation_file_name)
-    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
-
-    map_check(sitk.GetArrayFromImage(map_sitk), extractor.settings)
-
-    labels = np.unique(parcellation_data)
-    print('Found labels', labels)
-    if num_parcels is not None:
-        assert num_parcels == len(
-            labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
-
-    # get global features
-    print('pyradiomics generating global tract features')
-    parcellation_data = sitk.GetArrayFromImage(parc_sitk)
-    parcellation_data[parcellation_data > 0] = 1
-    env_sitk = sitk.GetImageFromArray(parcellation_data)
-    env_sitk.CopyInformation(parc_sitk)
-    feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=env_sitk)
-    print('pyradiomics formatting results ...')
-    if remove_paths:
-        features['map'].append(os.path.basename(parameter_map_file_name))
-        features['parcellation'].append(os.path.basename(parcellation_file_name))
-    else:
-        features['map'].append(parameter_map_file_name)
-        features['parcellation'].append(parcellation_file_name)
-    features['parcel'].append('GLOBAL')
-    for featureName in feature_vector.keys():
-        try:
-            val = float(feature_vector[featureName])
-            if featureName not in features.keys():
-                features[featureName] = []
-            features[featureName].append(val)
-        except Exception:
-            pass
-
-    # features per label
-    for label in labels:
-        label = int(label)
-        if label == 0:
-            continue
-        print('pyradiomics processing label ' + str(label))
-        feature_vector = extractor.execute(imageFilepath=map_sitk, maskFilepath=parc_sitk, label=label)
-        print('pyradiomics formatting results ...')
-        if remove_paths:
-            features['map'].append(os.path.basename(parameter_map_file_name))
-            features['parcellation'].append(os.path.basename(parcellation_file_name))
-        else:
-            features['map'].append(parameter_map_file_name)
-            features['parcellation'].append(parcellation_file_name)
-        features['parcel'].append('P' + str(label))
-        for featureName in feature_vector.keys():
-            try:
-                val = float(feature_vector[featureName])
-                if featureName not in features.keys():
-                    features[featureName] = []
-                features[featureName].append(val)
-            except Exception:
-                pass
-
-    if out_csv_file is not None:
-        if not out_csv_file.endswith('.csv'):
-            out_csv_file += '.csv'
-        print('pyradiomics saving results ...')
-        features_df = pd.DataFrame(features)
-        features_df.to_csv(out_csv_file, index=False)
-    print('pyradiomics finished processing')
-
-    return features
-
-
-def calc_tractometry(point_label_file_name: str,
-                     parameter_map_file_name: str,
-                     out_csv_file: str,
-                     features: dict = None,
-                     num_parcels: int = None):
-    """
-    Calculate tractometry features using points and corresponding parcel labels
-    :param point_label_file_name:
-    :param parameter_map_file_name:
-    :param out_csv_file:
-    :param features: append new features to this dict, if none, create empty dict
-    :param num_parcels: optional to ensure that all labels are present in the parcellation
-    :return:
+    Base class for feature extractors
     """
 
-    if features is None:
-        features = dict()
-        features['map'] = []
-        features['parcellation'] = []
-        features['parcel'] = []
-        features['tractometry-mean'] = []
+    def __init__(self, num_parcels: int = None) -> None:
+        """
+        :param num_parcels: optional to ensure that all labels are present in the parcellation
+        """
+        self.num_parcels = num_parcels
+        self.init_features()
+        
+    def init_features(self):
+        print('Initializing features dataframe ...')
+        self.features = pd.DataFrame({'map': [], 
+                                      'parcellation': [], 
+                                      'parcel': [], 
+                                      'filter': [], 
+                                      'feature_type': [], 
+                                      'feature': [], 
+                                      'value': [], 
+                                      'extractor': [], 
+                                      'extractor_version': [],
+                                      'radtract_version': []})
 
-    streamline_point_parcels = joblib.load(point_label_file_name)
-    map = nib.load(parameter_map_file_name)
-    map_data = map.get_fdata()
-    print('Calculating tractometry ...')
-    points = apply_affine(np.linalg.inv(map.affine), streamline_point_parcels['points'])
-    values = map_coordinates(map_data, points.T, order=1)
-    vals_per_parcel = dict()
-    points_per_parcel = dict()
-    if num_parcels is not None:
-        assert num_parcels == np.unique(streamline_point_parcels['parcels']).shape[
-            0], 'Number of parcels does not match number of labels in ' + point_label_file_name
-    for parcel, val, p in zip(streamline_point_parcels['parcels'], values, streamline_point_parcels['points']):
-        if parcel not in vals_per_parcel.keys():
-            vals_per_parcel[parcel] = []
-        vals_per_parcel[parcel].append(val)
-        if parcel not in points_per_parcel.keys():
-            points_per_parcel[parcel] = []
-        points_per_parcel[parcel].append(p)
-
-    for parcel in sorted(vals_per_parcel.keys()):
-        features['map'].append(parameter_map_file_name)
-        features['parcellation'].append(point_label_file_name)
-        features['parcel'].append('P' + str(parcel))
-        features['tractometry-mean'].append(np.nanmean(vals_per_parcel[parcel]))
-
-    if out_csv_file is not None:
-        if not out_csv_file.endswith('.csv'):
-            out_csv_file += '.csv'
-        print('tractometry saving results ...')
-        features_df = pd.DataFrame(features)
-        features_df.to_csv(out_csv_file, index=False)
-    print('tractometry finished processing')
-
-    return features
-
-
-def load_features(feature_file_names: list, select=[], drop=[], expected_parcels: int = None, verbose: bool = False,
-                  remove_map_substrings=[]):
-    """
-    Load features from files
-    :param feature_file_names: list of feature file names
-    :param select: select features containing these substrings
-    :param drop: drop features containing these substrings
-    :param expected_parcels: check that each feature file contains this number of parcels
-    :param verbose: print stats
-    :param remove_map_substrings: remove these substrings from map names (map names are appended to feature names in flattened feature matrix), paths are removed by default
-    :return: pandas dataframe of selected features, one row per file
-    """
-
-    if verbose:
-        print('Loading features ...')
-        print('Select:', select)
-        print('Drop:', drop)
-
-    out_df = None
-    bar = ProgressBar(len(feature_file_names))
-    for feature_file_name in feature_file_names:
-        feature_names = []
-
-        feature_df = pd.read_csv(feature_file_name)
+    def calc_features(self, parcellation_file_name: str, parameter_map_file_name: str):
+        """
+        Calculate features for a given parcellation and parameter map. Has to be implemented by the subclass.
+        """
+        raise NotImplementedError
+    
+    def flatten_features(feature_df: pd.DataFrame, expected_parcels: int = None):
+        """
+        Flatten feature dataframe with one column per feature
+        
+        :param feature_df: feature dataframe as returned by calc_features
+        :param expected_parcels: optional to ensure that all labels are present in the parcellation
+        :return: flattened feature dataframe with one column per feature
+        """
         # check for nan values
         if feature_df.isna().values.any():
-            print('Feature file contains NaN values:', feature_file_name)
+            print('Feature frame contains NaN values:')
 
-        parcels = feature_df['parcel'].tolist()
-        maps = feature_df['map'].tolist()
+        parcels = feature_df['parcel'].unique()
+        if expected_parcels is not None and len(parcels) != expected_parcels + 1:  # +1 accounts for tract-global features
+            raise Exception('ERROR: Feature frame does not contain ' + str(expected_parcels) + ' parcels')
 
-        c = 0
-        for map in maps:
-            for substring in remove_map_substrings:
-                map = map.replace(substring, '')
-            map = map.replace('.nii.gz', '')
-            map = map.split('/')[-1]
-            maps[c] = map
-            parcels[c] = str(parcels[c]) + '_' + map
-            c += 1
+        # drop parcellation, extractor, extractor_version and radtract_version columns
+        feature_df = feature_df.drop(columns=['parcellation', 'extractor', 'extractor_version', 'radtract_version'])
 
-        if expected_parcels is not None and len(
-                parcels) != expected_parcels + 1:  # +1 accounts for tract-global features
-            raise Exception('ERROR: Feature file does not contain ' + str(expected_parcels) + ' parcels:',
-                            feature_file_name)
+        # remove file ending from map names
+        feature_df['map'] = feature_df['map'].str.replace('.nii.gz', '')
 
-        # remove columns that are not features
-        feature_df = feature_df.drop(columns=['map', 'parcellation', 'parcel'])
-        col_list = [col for col in feature_df if not col.startswith('diagnostic')]
+        # split map names at '/' and keep last part
+        feature_df['map'] = feature_df['map'].str.split('/').str[-1]
 
-        feature_df = feature_df[col_list]
+        # in all columns, replace '_' with '-'
+        feature_df = feature_df.replace('_', '-', regex=True)
 
-        for feature in feature_df:
-            for parcel in parcels:
-                feature_names.append(str(parcel) + '_' + str(feature))
+        # creat new column 'f' concatenating all other columns but the values using '_' as separator in the following order: map, parcel, filter, feature
+        feature_df['f'] = feature_df['map'] + '_' + feature_df['parcel'] + '_' + feature_df['filter'] + '_' + feature_df['feature_type'] + '_' + feature_df['feature']
 
-        # flatten feature matrix (column-major order) to match loop above
-        features = feature_df.to_numpy()
-        features = features.flatten(order='F')
+        # drop all columns but 'f' and 'value'
+        feature_df = feature_df[['f', 'value']]
+        # rename 'f' to 'feature'
+        feature_df = feature_df.rename(columns={'f': 'feature'})
+        # transpose to get one column per feature
+        feature_df = feature_df.transpose()
+        # set first row as column names (feature names)
+        feature_df.columns = feature_df.iloc[0]
+        # drop first row (feature names)
+        feature_df = feature_df.drop(feature_df.index[0])
+        # reset index
+        feature_df = feature_df.reset_index(drop=True)
 
-        tmp_df = pd.DataFrame([features], columns=feature_names)
-        # select columns containing any of these strings
-        if len(select) > 0:
-            tmp_df = tmp_df.filter(regex='|'.join(select))
-            if tmp_df.shape[1] == 0:
-                print('NO FEATURES LEFT AFTER SELECTION', select)
+        return feature_df
 
-        # drop columns containing any of these strings
-        if len(drop) > 0:
-            tmp_df = tmp_df.drop(tmp_df.filter(regex='|'.join(drop)).columns, axis=1)
-            if tmp_df.shape[1] == 0:
-                print('NO FEATURES LEFT AFTER DROP', drop)
 
-        feature_file_names = tmp_df.columns.tolist()
+class PyradiomicsExtractor(Extractor):
+    """
+    Extract features using the pyradiomics package (https://pyradiomics.readthedocs.io/en/latest/)
+    """
 
-        if out_df is None:
-            out_df = tmp_df
+    def __init__(self, num_parcels: int = None, pyrad_params=None) -> None:
+        super().__init__(num_parcels = num_parcels)
+        if pyrad_params is not None:
+            self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(pyrad_params)
         else:
-            out_df = pd.concat([out_df, tmp_df], axis=0)
+            self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(os.path.dirname(__file__) + '/pyrad.yaml')
 
-        bar.next()
+    def map_check(self, data: np.ndarray, extractor_settings: dict = None):
+        """
+        :param map: Path to the map
+        :param extractor_settings: Settings for the pyradiomics feature extractor
+        """
+        data = np.nan_to_num(data)
+        range = np.max(data) - np.min(data)
+        robust_range = np.percentile(data, 99) - np.percentile(data, 1)
 
-    if verbose and len(feature_file_names) > 0:
-        print('Loaded samples:', out_df.shape[0])
-        print('Stats per sample:')
-        print('Total number of features:', out_df.shape[1])
-        print('Maps:', list(np.unique(maps)))
-        # print('Number of parcels:', out_df.shape[0] // len(np.unique(maps)))
-        # print('Number of features per map and parcel:', out_df.shape[1])
+        print('Checking map ...')
 
-        print('Number of shape features:', len([col for col in out_df if col.__contains__('shape')]))
-        print('Number of firstorder features:', len([col for col in out_df if col.__contains__('firstorder')]))
-        print('Number of glcm features:', len([col for col in out_df if col.__contains__('glcm')]))
-        print('Number of glrlm features:', len([col for col in out_df if col.__contains__('glrlm')]))
-        print('Number of glszm features:', len([col for col in out_df if col.__contains__('glszm')]))
-        print('Number of gldm features:', len([col for col in out_df if col.__contains__('gldm')]))
-        print('Number of ngtdm features:', len([col for col in out_df if col.__contains__('ngtdm')]))
+        if extractor_settings is not None and extractor_settings['normalize'] == 'true':
+            print('Map is being normalized. Please make sure that your bin with is set accordingly.')
+            return
 
-    return out_df
+        num_bins = range / extractor_settings['binWidth']
+        print('Map range: ', range)
+        print('Robust map range (99 percentile): ', robust_range)
+        print('Bin width: ', extractor_settings['binWidth'])
+        print('Number of bins: ', num_bins)
+
+        if num_bins < 16 or num_bins > 128:
+            print('Number of bins is not in the recommended range of 16-128.')
+            print('Consider normalizing the map or adjust the binWidth in the pyrad.yaml parameter file.')
+            print('Suggestion for bin width (50 bins), based on the map range: ' + str(range / 50) + '.')
+            print('Suggestion for bin width (50 bins), based on the robust map range: ' + str(robust_range / 50) + '.')
+        else:
+            print('Map range is OK: ', range)
+
+    def output_to_df(self, features, parcellation_file_name: str, parameter_map_file_name: str, parcel: str):
+
+        # feature_vector is a dict with all features
+        # convert this dict to a df with the dict keys as one column and the values as another column
+        # then split the key column into two columns (filter and feature)
+        # then add the parcel column
+        # then append to self.features
+        # then return self.features
+
+        f = dict()
+        f['filter'] = []
+        f['feature_type'] = []
+        f['feature'] = []
+        f['value'] = []
+        for key, value in features.items():
+            filter = key.split('_')[0]
+            feature = key.replace(filter + '_', '')
+            f['filter'].append(filter)
+            ftype = feature.split('_')[0]
+            if ftype != 'shape' and ftype != 'firstorder':
+                ftype = 'texture'
+            else:
+                feature = feature.replace(ftype + '_', '')
+            f['feature_type'].append(ftype)
+            f['feature'].append(feature)
+            f['value'].append(value)
+
+        features_df = pd.DataFrame(f)
+        features_df['extractor'] = 'pyradiomics'
+        features_df['extractor_version'] = radiomics.__version__
+        features_df['radtract_version'] = get_version()
+        features_df['map'] = parameter_map_file_name
+        features_df['parcellation'] = parcellation_file_name
+        features_df['parcel'] = parcel
+        self.features = pd.concat([self.features, features_df], axis=0)
+
+
+    def calc_features(self, parcellation_file_name: str, parameter_map_file_name: str):
+            
+            self.init_features()
+            
+            print('Pyradiomics settings:', self.extractor.settings)
+            print('Enabled image types:', self.extractor.enabledImagetypes)
+            print('Enables features:', self.extractor.enabledFeatures)
+
+            map_sitk, parc_sitk = self.extractor.loadImage(parameter_map_file_name, parcellation_file_name)
+            parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+
+            self.map_check(sitk.GetArrayFromImage(map_sitk), self.extractor.settings)
+
+            labels = np.unique(parcellation_data)
+            print('Found labels', labels)
+            if self.num_parcels is not None:
+                assert self.num_parcels == len(labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+            # get global features
+            print('pyradiomics calculating global tract features')
+            parcellation_data = sitk.GetArrayFromImage(parc_sitk)
+            parcellation_data[parcellation_data > 0] = 1
+            env_sitk = sitk.GetImageFromArray(parcellation_data)
+            env_sitk.CopyInformation(parc_sitk)
+
+            self.output_to_df(self.extractor.execute(imageFilepath=map_sitk, maskFilepath=env_sitk),
+                              parcellation_file_name, parameter_map_file_name, 'GLOBAL')
+            
+
+            # features per label
+            for label in labels:
+                label = int(label)
+                if label == 0:
+                    continue
+                print('pyradiomics processing parcel ' + str(label))
+                self.output_to_df(self.extractor.execute(imageFilepath=map_sitk, maskFilepath=parc_sitk, label=label),
+                                  parcellation_file_name, parameter_map_file_name, 'P' + str(label))
+
+            print('pyradiomics finished processing')
+
+            # drop where filter == 'diagnostic'
+            self.features = self.features[self.features['filter'] != 'diagnostics']
+            # reset index
+            self.features = self.features.reset_index(drop=True)
+
+            return self.features
+    
+
+if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
+    import mirp 
+
+    class MirpExtractor(Extractor):
+        """
+        Extract features using the mirp package (https://github.com/oncoray/mirp/)
+        """
+
+        def __init__(self, num_parcels: int = None) -> None:
+            super().__init__(num_parcels = num_parcels)
+
+        def calc_features(self, parcellation_file_name: str, parameter_map_file_name: str):
+
+            self.init_features()
+
+            features = {'map': [], 
+                        'parcellation': [], 
+                        'parcel': [], 
+                        'filter': [], 
+                        'feature_type': [],
+                        'feature': [], 
+                        'value': [], 
+                        'extractor': [], 
+                        'extractor_version': [],
+                        'radtract_version': []}
+
+            
+            parcellation_data = nib.load(parcellation_file_name).get_fdata()
+
+            labels = np.unique(parcellation_data)
+            print('Found labels', labels)
+            if self.num_parcels is not None:
+                assert self.num_parcels == len(labels) - 1, 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+            # to-do: get global features
+                
+
+            # get features for each label
+            mirp_output = mirp.extract_features(image=parameter_map_file_name, 
+                                            mask=parcellation_file_name, 
+                                            base_discretisation_method="fixed_bin_number", 
+                                            base_discretisation_n_bins=32, 
+                                            export_features=True, 
+                                            num_cpus=16)
+            mirp_output = mirp_output[0]
+
+            # drop column 'sample_name'
+            mirp_output = mirp_output.drop(columns=['sample_name'])
+
+            # drop all columns where column name starts with 'image_'
+            mirp_output = mirp_output.loc[:, ~mirp_output.columns.str.startswith('image_')]
+
+            features = {'map': [], 
+                        'parcellation': [], 
+                        'parcel': [], 
+                        'filter': [], 
+                        'feature_type': [],
+                        'feature': [], 
+                        'value': [], 
+                        'extractor': [], 
+                        'extractor_version': [],
+                        'radtract_version': []}
+
+            # fill output dataframe
+            for index, row in mirp_output.iterrows():
+                for column in mirp_output.columns:
+                    parcel = 'P' + str(index)
+                    filter = 'original'
+                    feature = column
+                    feature_type = '???'
+                    tmp = feature.split('_')[0]
+                    if tmp == 'morph':
+                        feature_type = 'shape'
+                    elif tmp in ['stat', 'ivh', 'ih', 'loc']:
+                        feature_type = 'firstorder'
+                    elif tmp in ['cm', 'rlm', 'szm', 'dzm', 'ngl']:
+                        feature_type = 'texture'
+                    
+                    features['map'].append(parameter_map_file_name)
+                    features['parcellation'].append(parcellation_file_name)
+                    features['parcel'].append(parcel)
+                    features['filter'].append(filter)
+                    features['extractor'].append('mirp')
+                    features['extractor_version'].append('???')
+                    features['radtract_version'].append(get_version())
+                    features['feature_type'].append(feature_type)
+                    features['feature'].append(feature)
+                    features['value'].append(row[column])
+            features = pd.DataFrame(features)
+            self.features = self.features.reset_index(drop=True)
+
+            print('mirp finished processing')
+
+            return features
+        
+
+#class MitkExtractor(Extractor):
+
+
+
+class TractometryExtractor(Extractor):
+    """
+    Extract features using tractometry
+    """
+
+    def __init__(self, num_parcels: int = None) -> None:
+        super().__init__(num_parcels = num_parcels)
+
+    def calc_features(self,
+                      parcellation_file_name: str,
+                      parameter_map_file_name: str):
+        """
+        Calculate tractometry features using points and corresponding parcel labels
+        :param parcellation_file_name: parcellation file in .pkl format (points and labels)
+        :param parameter_map_file_name: parameter map file in .nii.gz format (e.g. fractional anisotropy)
+        :return: tractometry features
+        """
+
+        self.init_features()
+
+        features = {'map': [], 
+                    'parcellation': [], 
+                    'parcel': [], 
+                    'filter': [], 
+                    'feature_type': [],
+                    'feature': [], 
+                    'value': [], 
+                    'extractor': [], 
+                    'extractor_version': [],
+                    'radtract_version': []}
+
+        streamline_point_parcels = joblib.load(parcellation_file_name)
+        map = nib.load(parameter_map_file_name)
+        map_data = map.get_fdata()
+
+        print('Calculating tractometry ...')
+        points = apply_affine(np.linalg.inv(map.affine), streamline_point_parcels['points'])
+        values = map_coordinates(map_data, points.T, order=1)
+        vals_per_parcel = dict()
+        points_per_parcel = dict()
+        if self.num_parcels is not None:
+            assert self.num_parcels == np.unique(streamline_point_parcels['parcels']).shape[0], 'Number of parcels does not match number of labels in ' + parcellation_file_name
+
+        for parcel, val, p in zip(streamline_point_parcels['parcels'], values, streamline_point_parcels['points']):
+            if parcel not in vals_per_parcel.keys():
+                vals_per_parcel[parcel] = []
+            vals_per_parcel[parcel].append(val)
+            if parcel not in points_per_parcel.keys():
+                points_per_parcel[parcel] = []
+            points_per_parcel[parcel].append(p)
+
+        measures = [('mean', np.nanmean), ('median', np.nanmedian), ('std', np.nanstd), ('min', np.nanmin), ('max', np.nanmax), ('sum', np.nansum), ('count', len),
+                    ('range', lambda x: np.nanmax(x) - np.nanmin(x)), ('skew', lambda x: scipy.stats.skew(x, nan_policy='omit')), ('kurtosis', lambda x: scipy.stats.kurtosis(x, nan_policy='omit')),
+                    ('percentile-5', lambda x: np.nanpercentile(x, 5)), ('percentile-25', lambda x: np.nanpercentile(x, 25)), ('percentile-75', lambda x: np.nanpercentile(x, 75)), ('percentile-95', lambda x: np.nanpercentile(x, 95)),
+                    ('iqr', lambda x: scipy.stats.iqr(x, nan_policy='omit')), ('entropy', lambda x: scipy.stats.entropy(x)), ('variation', lambda x: scipy.stats.variation(x, nan_policy='omit')),
+                    ('median-abs-dev', lambda x: scipy.stats.median_abs_deviation(x, nan_policy='omit')),
+                    ]
+        
+        # tract-global features
+        for measure, func in measures:
+            features['map'].append(parameter_map_file_name)
+            features['parcellation'].append(parcellation_file_name)
+            features['parcel'].append('GLOBAL')
+            features['filter'].append('original')
+            features['extractor'].append('tractometry')
+            features['extractor_version'].append(get_version())
+            features['radtract_version'].append(get_version())
+            features['feature_type'].append('firstorder')
+            features['feature'].append(measure)
+            features['value'].append(func(values))
+
+        # per label features
+        for parcel in sorted(vals_per_parcel.keys()):
+
+            for measure, func in measures:
+                features['map'].append(parameter_map_file_name)
+                features['parcellation'].append(parcellation_file_name)
+                features['parcel'].append('P' + str(parcel))
+                features['filter'].append('original')
+                features['extractor'].append('tractometry')
+                features['extractor_version'].append(get_version())
+                features['radtract_version'].append(get_version())
+                features['feature_type'].append('firstorder')
+                features['feature'].append(measure)
+                features['value'].append(func(vals_per_parcel[parcel]))
+
+        self.features = pd.DataFrame(features)
+        self.features = self.features.reset_index(drop=True)
+        
+        print('tractometry finished processing')
+
+        return self.features
 
 
 def main():
@@ -329,7 +432,7 @@ def main():
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
     parser.add_argument('--map', type=str, help='Parameter map file (e.g. fractional anisotropy)')
     parser.add_argument('--pyrad_params', type=str, help='Pyradiomics parameter file (e.g. pyrad.yaml)', default=None)
-    parser.add_argument('--output', type=str, help='Output feature file (.csv)')
+    parser.add_argument('--output', type=str, help='Output feature file (.csv or .pkl)')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -337,17 +440,28 @@ def main():
     
     args = parser.parse_args()
 
+    features = None
+
     if args.parcellation.endswith('.nii.gz'):
-        calc_radiomics(parcellation_file_name=args.parcellation,
-                    parameter_map_file_name=args.map,
-                    pyrad_params=args.pyrad_params,
-                    out_csv_file=args.output,
-                    )
+        extractor = PyradiomicsExtractor(pyrad_params=args.pyrad_params)
+        features = extractor.calc_features(parcellation_file_name=args.parcellation,
+                                           parameter_map_file_name=args.map)
+        
     elif args.parcellation.endswith('.pkl'):
-        calc_tractometry(point_label_file_name=args.parcellation,
-                         parameter_map_file_name=args.map,
-                         out_csv_file=args.output,
-                         )
+        extractor = TractometryExtractor()
+        features = extractor.calc_features(parcellation_file_name=args.parcellation,
+                                           parameter_map_file_name=args.map)
+    
+    else:
+        raise Exception('ERROR: Parcellation file must be in .nii.gz or .pkl format')
+    
+    if features is not None:
+        if args.output.endswith('.csv'):
+            features.to_csv(args.output)
+        elif args.output.endswith('.pkl'):
+            features.to_pickle(args.output)
+        else:
+            raise Exception('ERROR: Output file must be in .csv or .pkl format')
 
 
 if __name__ == '__main__':

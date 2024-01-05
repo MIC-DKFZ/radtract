@@ -45,6 +45,7 @@ def test_centerline_parcellation():
     assert np.equal(new_parcellation.get_fdata(), centerline_parcellation.get_fdata()).all(), 'centerline parcellation test 2 failed'
 
 
+
 def test_hyperplane_parcellation():
     streamlines, beginnings, envelope, _, hyperplane_parcellation = load_data()
     new_parcellation, _, _, _ = parcellation.parcellate_tract(streamlines=streamlines, parcellation_type='hyperplane', binary_envelope=envelope, num_parcels=17, start_region=beginnings, out_parcellation_filename=get_results_path() + 'test_tract_parcellation-hyperplane.nii.gz')
@@ -65,27 +66,27 @@ def test_num_parcel_esimation():
 
 def test_hyperplane_features():
     data_folder = os.path.dirname(__file__) + '/test_data/'
-    features_df = pd.read_csv(data_folder + 'hyperplane_features.csv')
-    new_features = features.calc_radiomics(parcellation_file_name=data_folder + 'hyperplane_parcellation.nii.gz',
-                                           parameter_map_file_name=data_folder + 'test_map.nii.gz',
-                                           out_csv_file=get_results_path() + 'hyperplane_features.csv',
-                                           num_parcels=17,
-                                           remove_paths=True
-                                           )
-
-    new_features_df = pd.DataFrame(new_features)
-    pd.testing.assert_frame_equal(new_features_df, features_df, check_dtype=False)
+    features_df = pd.read_pickle(data_folder + 'hyperplane_features.pkl')
+    pyrad_extractor = features.PyradiomicsExtractor(num_parcels=17)
+    new_features = pyrad_extractor.calc_features(parcellation_file_name=data_folder + 'hyperplane_parcellation.nii.gz',
+                                                 parameter_map_file_name=data_folder + 'test_map.nii.gz'
+                                                )
+    # remove path from 'map' and 'parcellation' columns
+    new_features['map'] = new_features['map'].str.split('/').str[-1]
+    new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
+    new_features.to_pickle(get_results_path() + 'hyperplane_features.pkl')
+    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
 
 
 def test_centerline_features():
     data_folder = os.path.dirname(__file__) + '/test_data/'
-    features_df = pd.read_csv(data_folder + 'centerline_features.csv')
-    new_features = features.calc_radiomics(parcellation_file_name=data_folder + 'centerline_parcellation.nii.gz',
-                                           parameter_map_file_name=data_folder + 'test_map.nii.gz',
-                                           out_csv_file=get_results_path() + 'centerline_features.csv',
-                                           num_parcels=17,
-                                           remove_paths=True
-                                           )
-
-    new_features_df = pd.DataFrame(new_features)
-    pd.testing.assert_frame_equal(new_features_df, features_df, check_dtype=False)
+    features_df = pd.read_pickle(data_folder + 'centerline_features.pkl')
+    pyrad_extractor = features.PyradiomicsExtractor(num_parcels=17)
+    new_features = pyrad_extractor.calc_features(parcellation_file_name=data_folder + 'centerline_parcellation.nii.gz',
+                                                 parameter_map_file_name=data_folder + 'test_map.nii.gz'
+                                                )
+    # remove path from 'map' and 'parcellation' columns
+    new_features['map'] = new_features['map'].str.split('/').str[-1]
+    new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
+    new_features.to_pickle(get_results_path() + 'centerline_features.pkl')
+    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
