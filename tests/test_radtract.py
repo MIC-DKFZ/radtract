@@ -81,6 +81,9 @@ def test_pyradiomics_features():
     new_features = new_features.drop(columns=['extractor_version', 'radtract_version'])
     features_df = features_df.drop(columns=['extractor_version', 'radtract_version'])
 
+    # convert to same type
+    new_features = new_features.astype(features_df.dtypes.to_dict())
+
     # print pandas version
     print('pandas version', pd.__version__)
     print(new_features.equals(features_df))
@@ -89,8 +92,10 @@ def test_pyradiomics_features():
     print(new_features.head(3))
     print(features_df.head(3))
 
-    # print vlaues that are different between the two dataframes
-    print(new_features.values != features_df.values)
+    # find differences and print them
+    print(new_features[~new_features.isin(features_df)].dropna(how='all'))
+    print(features_df[~features_df.isin(new_features)].dropna(how='all'))
+        
 
     assert new_features.equals(features_df), 'pyradiomics features test 1 failed'
 
