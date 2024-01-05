@@ -89,14 +89,9 @@ def test_pyradiomics_features():
     print(new_features.head(3))
     print(features_df.head(3))
 
-    # find indices of elements that are not equal in both dataframes
-    count = 0
     for i, j in np.ndindex(new_features.shape):
-        if new_features.iloc[i, j] != features_df.iloc[i, j]:
-            print(i, j, new_features.iloc[i, j], features_df.iloc[i, j], new_features.iloc[i, j].dtype, features_df.iloc[i, j].dtype)
-            count += 1
-        if count > 10:
-            break
+        dpercent = abs(1.0 - new_features.iloc[i, j] / features_df.iloc[i, j])
+        assert dpercent < 1.0e-5, 'element ' + str(i) + ', ' + str(j) + ' differs by ' + str(dpercent) + ' from reference'
         
     # check for equality with defined precision
-    pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False, check_exact=False)
+    # pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False, check_exact=False)
