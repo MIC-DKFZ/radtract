@@ -75,6 +75,9 @@ def test_hyperplane_features():
     new_features['map'] = new_features['map'].str.split('/').str[-1]
     new_features['parcellation'] = new_features['parcellation'].str.split('/').str[-1]
     new_features.to_pickle(get_results_path() + 'hyperplane_features.pkl')
+    print('new_features.shape', new_features.shape)
+    print('features_df.shape', features_df.shape)
+    
     pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
 
 
