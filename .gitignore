@@ -14,4 +14,3 @@
 /resources/example/*static*
 /resources/example/tractseg_output/
 /tests/test_results/
-test.ipynb

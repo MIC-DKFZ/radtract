@@ -111,16 +111,12 @@ class PyradiomicsExtractor(Extractor):
     Extract features using the pyradiomics package (https://pyradiomics.readthedocs.io/en/latest/)
     """
 
-    remove_paths = False
-
-    def __init__(self, pyrad_params=None, remove_paths = False) -> None:
+    def __init__(self, pyrad_params=None) -> None:
         super().__init__()
         if pyrad_params is not None:
             self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(pyrad_params)
         else:
             self.extractor = radiomics.featureextractor.RadiomicsFeatureExtractor(os.path.dirname(__file__) + '/pyrad.yaml')
-        
-        self.remove_paths = remove_paths
 
     def map_check(self, data: np.ndarray, extractor_settings: dict = None):
         """
@@ -182,13 +178,8 @@ class PyradiomicsExtractor(Extractor):
         features_df['extractor'] = 'pyradiomics'
         features_df['extractor_version'] = radiomics.__version__
         features_df['radtract_version'] = get_version()
-
-        if self.remove_paths:
-            features_df['map'] = os.path.basename(parameter_map_file_name)
-            features_df['parcellation'] = os.path.basename(parcellation_file_name)
-        else:
-            features_df['map'] = parameter_map_file_name
-            features_df['parcellation'] = parcellation_file_name
+        features_df['map'] = parameter_map_file_name
+        features_df['parcellation'] = parcellation_file_name
         features_df['parcel'] = parcel
         self.features = pd.concat([self.features, features_df], axis=0)
 
@@ -329,9 +320,16 @@ if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
             print('mirp finished processing')
 
             return features
+        
+
+#class MitkExtractor(Extractor):
+
 
 
 class TractometryExtractor(Extractor):
+    """
+    Extract features using tractometry
+    """
 
     def calc_features(self,
                       parcellation_file_name: str,
@@ -339,11 +337,8 @@ class TractometryExtractor(Extractor):
         """
         Calculate tractometry features using points and corresponding parcel labels
         :param parcellation_file_name: parcellation file in .pkl format (points and labels)
-        :param parameter_map_file_name:
-        :param out_csv_file:
-        :param features: append new features to this dict, if none, create empty dict
-        :param num_parcels: optional to ensure that all labels are present in the parcellation
-        :return:
+        :param parameter_map_file_name: parameter map file in .nii.gz format (e.g. fractional anisotropy)
+        :return: tractometry features
         """
 
         self.init_features()
@@ -385,7 +380,21 @@ class TractometryExtractor(Extractor):
                     ('iqr', lambda x: scipy.stats.iqr(x, nan_policy='omit')), ('entropy', lambda x: scipy.stats.entropy(x)), ('variation', lambda x: scipy.stats.variation(x, nan_policy='omit')),
                     ('median-abs-dev', lambda x: scipy.stats.median_abs_deviation(x, nan_policy='omit')),
                     ]
+        
+        # tract-global features
+        for measure, func in measures:
+            features['map'].append(parameter_map_file_name)
+            features['parcellation'].append(parcellation_file_name)
+            features['parcel'].append('GLOBAL')
+            features['filter'].append('original')
+            features['extractor'].append('tractometry')
+            features['extractor_version'].append(get_version())
+            features['radtract_version'].append(get_version())
+            features['feature_type'].append('firstorder')
+            features['feature'].append(measure)
+            features['value'].append(func(values))
 
+        # per label features
         for parcel in sorted(vals_per_parcel.keys()):
 
             for measure, func in measures:
@@ -408,34 +417,35 @@ class TractometryExtractor(Extractor):
 
 def main():
 
-    # # extractor = PyradiomicsExtractor()
-    # # bla = extractor.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
-    # #                               parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz',)
-    # # bla.to_pickle('/home/neher/Downloads/test.pkl')
-    # # bla.to_csv('/home/neher/Downloads/test.csv')
+    # # # extractor = PyradiomicsExtractor()
+    # # # bla = extractor.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
+    # # #                               parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz',)
+    # # # bla.to_pickle('/home/neher/Downloads/test.pkl')
+    # # # bla.to_csv('/home/neher/Downloads/test.csv')
     
-    # # tractometry = TractometryExtractor()
-    # # bla = tractometry.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_tractometry.pkl',
-    # #                                  parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz',)
+    # tractometry = TractometryExtractor()
+    # bla = tractometry.calc_features(parcellation_file_name='/home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_tractometry.pkl',
+    #                                  parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz')
+    # bla.to_csv('/home/neher/Downloads/tractometry.csv')
 
-    # mirpextractor = MirpExtractor()
-    # bla = mirpextractor.calc_features(parcellation_file_name='//home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
-    #                                     parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz')
-    # bla.to_csv('/home/neher/Downloads/mirp.csv')
+    # # mirpextractor = MirpExtractor()
+    # # bla = mirpextractor.calc_features(parcellation_file_name='//home/neher/Downloads/bmbf_c0_046/tractseg_output/parcellations/CST_left_hyperplane.nii.gz',
+    # #                                     parameter_map_file_name='/home/neher/Downloads/bmbf_c0_046/Diffusion_MNI_tensors_fa.nii.gz')
+    # # bla.to_csv('/home/neher/Downloads/mirp.csv')
 
 
-    # # bla = pd.read_pickle('/home/neher/Downloads/test.pkl')
-    # # bla2 = Extractor.flatten_features(bla)
+    # # # bla = pd.read_pickle('/home/neher/Downloads/test.pkl')
+    # # # bla2 = Extractor.flatten_features(bla)
 
-    # #print(bla.shape)
-    # # print(bla2.shape)
+    # # #print(bla.shape)
+    # # # print(bla2.shape)
 
-    # # for el in bla2.columns:
-    # #     print(el)
+    # # # for el in bla2.columns:
+    # # #     print(el)
 
     # return
 
-    to-do adjust tests and prediction script
+    # # to-do adjust tests and prediction script
 
     parser = argparse.ArgumentParser(description='RadTract Feature Calculation')
     parser.add_argument('--parcellation', type=str, help='Input parcellation file')
