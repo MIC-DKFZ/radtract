@@ -51,7 +51,7 @@ Installation should complete within a few seconds.
 
 ### Pyradiomics installation issues
 
-If the pyradiomics installation fails with amissing numpy error despite numpy being installed, a workaround is to install pyradimics directly from source:
+If the pyradiomics installation fails with a missing numpy error despite numpy being installed, a workaround is to install pyradimics directly from source:
 
 1. Checkout the pyradiomics repo: `git clone git://github.com/Radiomics/pyradiomics`
 2. Activate your virtual environment (if you use one): `source myvenv/bin/activate`
