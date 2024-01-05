@@ -34,7 +34,7 @@ test_pytest:
     - *default_before_script
   script:
     - pip install .
-    - pytest tests/
+    - pytest  -v -s -k "features" tests/
   #artifacts:
   #  paths:
   #    - tests/test_results/
