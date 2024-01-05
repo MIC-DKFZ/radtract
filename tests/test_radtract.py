@@ -98,6 +98,3 @@ def test_pyradiomics_features():
         dpercent = abs(1.0 - el1 / el2)
         assert dpercent < 1.0e-5, 'value ' + str(i) + ', ' + str(i) + ' differs by ' + str(dpercent) + ' from reference'
         i += 1
-        
-    # check for equality with defined precision
-    # pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False, check_exact=False)

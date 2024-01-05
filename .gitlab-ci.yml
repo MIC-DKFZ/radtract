@@ -6,17 +6,17 @@ stages:
   - lint
   - test 
 
-# license_compliance:
-#   image: python:3.10
-#   stage: lint
-#   before_script:
-#     - pip install --upgrade pip
-#     - pip install reuse
-#   script:
-#     - reuse lint
-#   allow_failure: true
-#   rules:
-#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+license_compliance:
+  image: python:3.10
+  stage: lint
+  before_script:
+    - pip install --upgrade pip
+    - pip install reuse
+  script:
+    - reuse lint
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 .default_before_script: &default_before_script
   - apt-get update && apt-get install libgl1 git-lfs -y
@@ -34,19 +34,19 @@ test_pytest:
     - *default_before_script
   script:
     - pip install .
-    - pytest  -v -s -k "features" tests/
+    - pytest  -v -s tests/ # -k "features"
   #artifacts:
   #  paths:
   #    - tests/test_results/
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# test_run_parcellate:
-#  extends: test_pytest
-#  before_script:
-#    - *default_before_script
-#    - pip install .
-#    - mkdir tests/test_results/ -p
-#  script:
-#    - radtract_parcellate --streamlines tests/test_data/test_tract.trk --envelope tests/test_data/test_tract_envelope.nii.gz --start tests/test_data/test_tract_b.nii.gz --num_parcels 5 --output tests/test_results/hyperplane_parcellation_command.nii.gz
-#    - radtract_features --parcellation tests/test_results/hyperplane_parcellation_command.nii.gz --map tests/test_data/test_map.nii.gz --output tests/test_results/hyperplane_parcellation_command.csv
+test_run_parcellate:
+ extends: test_pytest
+ before_script:
+   - *default_before_script
+   - pip install .
+   - mkdir tests/test_results/ -p
+ script:
+   - radtract_parcellate --streamlines tests/test_data/test_tract.trk --envelope tests/test_data/test_tract_envelope.nii.gz --start tests/test_data/test_tract_b.nii.gz --num_parcels 5 --output tests/test_results/hyperplane_parcellation_command.nii.gz
+   - radtract_features --parcellation tests/test_results/hyperplane_parcellation_command.nii.gz --map tests/test_data/test_map.nii.gz --output tests/test_results/hyperplane_parcellation_command.csv
