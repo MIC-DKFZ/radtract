@@ -81,9 +81,12 @@ def test_pyradiomics_features():
     print('pandas version', pd.__version__)
     print(new_features.equals(features_df))
 
-    # print first three rows of both dataframes
+    # print first three rows of both dataframes, only values
     print(new_features.head(3))
     print(features_df.head(3))
+
+    # print vlaues that are different between the two dataframes
+    print(new_features.values != features_df.values)
 
 
     pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
