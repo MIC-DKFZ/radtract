@@ -270,12 +270,14 @@ if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
                 
 
             # get features for each label
+            np.random.seed(0)
+            print('RANDOM SEED SET TO 0 FOR MIRP')
             mirp_output = mirp.extract_features(image=parameter_map_file_name, 
                                             mask=parcellation_file_name, 
                                             base_discretisation_method="fixed_bin_number", 
                                             base_discretisation_n_bins=32, 
-                                            export_features=True, 
-                                            num_cpus=16)
+                                            export_features=True)
+            np.random.seed(None)
             mirp_output = mirp_output[0]
 
             # drop column 'sample_name'
