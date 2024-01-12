@@ -13,9 +13,7 @@ If you use RadTract, please cite our [paper](https://www.nature.com/articles/s41
 
 ## Overview
 
-Python package for radiomic tractometry (RadTract). RadTract is a tool designed for tract-specific microstructural analysis of the brain’s white matter using diffusion MRI. It enhances traditional tractometry, which often misses valuable information due to its reliance on summary statistics and scalar values.
-
-RadTract incorporates radiomics, a method that analyzes a multitude of quantitative image features beyond visual perception, into tractometry. This integration allows for improved predictive modeling while maintaining the localization capability of tractometry.
+RadTract is a python implementation of radiomic tractometry or "Tractomics". It is designed for tract-specific microstructural analysis of the brain’s white matter using diffusion MRI. It enhances traditional tractometry, which often misses valuable information due to its reliance on bare summary statistics and scalar values. RadTract incorporates radiomics, a method that analyzes a multitude of quantitative image features beyond visual perception, into tractometry. This integration allows for improved predictive modeling while maintaining the localization capability of tractometry.
 
 RadTract has demonstrated its effectiveness in diagnosing disease subgroups across various datasets and estimating demographic and clinical parameters in multiple clinical populations. It holds the potential to pioneer a new generation of tract-specific imaging biomarkers, benefiting a wide range of applications from basic neuroscience to medical research.
 
