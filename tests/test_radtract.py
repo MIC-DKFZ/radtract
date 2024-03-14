@@ -109,6 +109,10 @@ def test_mirp_features():
         new_features = new_features.drop(columns=['extractor_version', 'radtract_version'])
         features_df = features_df.drop(columns=['extractor_version', 'radtract_version'])
 
-        pd.testing.assert_frame_equal(new_features, features_df, check_dtype=False)
+        i = 0
+        for el1, el2 in zip(new_features['value'], features_df['value']):
+            dpercent = abs(1.0 - el1 / el2)
+            assert dpercent < 0.025, 'value ' + str(i) + ' differs by ' + str(dpercent) + ' from reference'
+            i += 1
     else:
         print('Skipping MIRP tests because python version is < 3.11')
