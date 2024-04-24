@@ -201,7 +201,7 @@ def is_inside(index, image):
     return True
 
 
-def point_label_file_to_mitkpointset(point_label_file, out_path, streamline_files = []):
+def point_label_file_to_mitkpointset(point_label_file, out_path, streamline_files = [], point_size=1.0):
     """
     Converts a point label file to a scene file of mitk pointsets. This is useful to visualize the streamline points with labels as point clouds in MITK Diffusion (https://github.com/MIC-DKFZ/MITK-Diffusion/).
     :param point_label_file: path to point label file
@@ -305,7 +305,7 @@ def point_label_file_to_mitkpointset(point_label_file, out_path, streamline_file
         text = '<?xml version="1.0" encoding="UTF-8"?>'
         text += '<Version Writer="/home/neher/coding/mitk/mitk/Modules/SceneSerializationBase/src/mitkPropertyListSerializer.cpp" Revision="$Revision: 17055 $" FileVersion="1"/>'
         text += '<property key="pointsize" type="FloatProperty">'
-        text += '<float value="0.5"/>'
+        text += '<float value="' + str(point_size) + '"/>'
         text += '</property>'
         text += '<property key="color" type="ColorProperty">'
         text += '<color r="' + str(color[0]) + '" g="' + str(color[1]) + '" b="' + str(color[2]) + '"/>'
@@ -357,3 +357,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

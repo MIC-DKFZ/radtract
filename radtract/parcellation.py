@@ -323,6 +323,8 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
             print('Creating binary envelope from reference image')
             binary_envelope = tract_envelope(streamlines, reference_image)
             auto_envelope = True
+        else:
+            raise Exception('No binary envelope provided and no start region or reference image set for automatic envelope calculation.')
     else:
         print('Using provided binary envelope')
 
@@ -383,6 +385,7 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
     reduced_streamlines = None
     svc = None
     streamline_point_parcels = None
+    train_data_point_parcels = None
     colors = None
 
     if num_parcels > 1 and parcellation_type == 'hyperplane':
@@ -405,6 +408,10 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
         for s in reduced_streamlines:
             samples += s.tolist()
             classes += np.arange(1, len(s) + 1, 1).tolist()
+
+        train_data_point_parcels = dict()
+        train_data_point_parcels['points'] = samples
+        train_data_point_parcels['parcels'] = classes
 
         samples = np.array(samples)
         classes = np.array(classes)
@@ -655,6 +662,9 @@ def parcellate_tract(streamlines: nib.streamlines.array_sequence.ArraySequence,
 
     if save_intermediate_files:
 
+        if train_data_point_parcels is not None:
+            joblib.dump(train_data_point_parcels, out_parcellation_filename.replace('.nii.gz', '_train_data.pkl'))
+
         if envelope_data is not None:
             new_envelope_data = np.zeros(envelope_data.shape, dtype='uint8')
             new_envelope_data[np.where(envelope_data > 0)] = 1
@@ -763,3 +773,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
