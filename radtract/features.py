@@ -272,6 +272,7 @@ if sys.version_info >= (3, 11): # mirp only works with python >= 3.11
             # get features for each label
             np.random.seed(0)
             print('RANDOM SEED SET TO 0 FOR MIRP')
+            print('\033[91mWARNING: MIRP is automatically normalizing inside the mask. This is aknown issue and has to be fixed.\033[0m')
             mirp_output = mirp.extract_features(image=parameter_map_file_name, 
                                             mask=parcellation_file_name, 
                                             base_discretisation_method="fixed_bin_number", 
