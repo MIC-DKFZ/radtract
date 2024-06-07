@@ -40,20 +40,22 @@ def density_filter(streamlines: nib.streamlines.array_sequence.ArraySequence,
     density_data = density.get_fdata()
 
     # transform streamlines to voxel space
-    streamlines = transform_streamlines(streamlines, np.linalg.inv(density.affine))
+    vox_streamlines = transform_streamlines(streamlines, np.linalg.inv(density.affine))
 
     print('Applying density filter')
 
     # loop over each streamline and check the desnity value at each point
     # if the density value is below the threshold, remove the streamline
     filtered_streamlines = []
-    for streamline in streamlines:
+    i = 0
+    for streamline in vox_streamlines:
         count = 0
         for point in streamline:
             if density_data[int(point[0]), int(point[1]), int(point[2])] >= threshold:
                 count += 1
         if count / len(streamline) >= fraction:
-            filtered_streamlines.append(streamline)
+            filtered_streamlines.append(streamlines[i])
+        i += 1
 
     print(str(len(filtered_streamlines)) + ' of ' + str(len(streamlines)) + ' streamlines remaining')
 
@@ -79,11 +81,12 @@ def density_filter_cmdentry():
 
     args = parser.parse_args()
 
-    streamlines = load_trk_streamlines(args.streamlines)
+    fib = load_trk(args.streamlines, "same", bbox_valid_check=False)
+    streamlines = fib.streamlines
     density = nib.load(args.density)
 
     filtered_streamlines = density_filter(streamlines, density, args.threshold, args.fraction, args.calculate_density)
-    save_trk_streamlines(filtered_streamlines, args.output, density)
+    save_trk_streamlines(filtered_streamlines, args.output, fib)
 
 
 def visitation_count_filter(streamlines: nib.streamlines.array_sequence.ArraySequence, 
@@ -113,20 +116,22 @@ def visitation_count_filter(streamlines: nib.streamlines.array_sequence.ArraySeq
     vcount_data = vcount.get_fdata()
 
     # transform streamlines to voxel space
-    streamlines = transform_streamlines(streamlines, np.linalg.inv(vcount.affine))
+    vox_streamlines = transform_streamlines(streamlines, np.linalg.inv(vcount.affine))
 
     print('Applying visitation count filter')
 
     # loop over each streamline and check the desnity value at each point
     # if the density value is below the threshold, remove the streamline
     filtered_streamlines = []
-    for streamline in streamlines:
+    i = 0
+    for streamline in vox_streamlines:
         count = 0
         for point in streamline:
             if vcount_data[int(point[0]), int(point[1]), int(point[2])] >= threshold:
                 count += 1
         if count / len(streamline) >= fraction:
-            filtered_streamlines.append(streamline)
+            filtered_streamlines.append(streamlines[i])
+        i += 1
 
     print(str(len(filtered_streamlines)) + ' of ' + str(len(streamlines)) + ' streamlines remaining')
 
@@ -152,11 +157,12 @@ def visitation_count_filter_cmdentry():
 
     args = parser.parse_args()
 
-    streamlines = load_trk_streamlines(args.streamlines)
+    fib = load_trk(args.streamlines, "same", bbox_valid_check=False)
+    streamlines = fib.streamlines
     vcount = nib.load(args.vcount)
 
     filtered_streamlines = visitation_count_filter(streamlines, vcount, args.threshold, args.fraction, args.calculate_vcount)
-    save_trk_streamlines(filtered_streamlines, args.output, vcount)
+    save_trk_streamlines(filtered_streamlines, args.output, fib)
 
 
 def mask_overlap_filter(streamlines: nib.streamlines.array_sequence.ArraySequence, 
@@ -179,18 +185,20 @@ def mask_overlap_filter(streamlines: nib.streamlines.array_sequence.ArraySequenc
     mask_data = mask.get_fdata()
 
     # transform streamlines to voxel space
-    streamlines = transform_streamlines(streamlines, np.linalg.inv(mask.affine))
+    vox_streamlines = transform_streamlines(streamlines, np.linalg.inv(mask.affine))
 
     print('Applying mask overlap filter')
 
     filtered_streamlines = []
-    for streamline in streamlines:
+    i = 0
+    for streamline in vox_streamlines:
         count = 0
         for point in streamline:
             if mask_data[int(point[0]), int(point[1]), int(point[2])] > 0:
                 count += 1
         if count / len(streamline) >= fraction:
-            filtered_streamlines.append(streamline)      
+            filtered_streamlines.append(streamlines[i])      
+        i += 1
 
     print(str(len(filtered_streamlines)) + ' of ' + str(len(streamlines)) + ' streamlines remaining')          
 
@@ -214,11 +222,12 @@ def mask_overlap_filter_cmdentry():
 
     args = parser.parse_args()
 
-    streamlines = load_trk_streamlines(args.streamlines)
+    fib = load_trk(args.streamlines, "same", bbox_valid_check=False)
+    streamlines = fib.streamlines
     mask = nib.load(args.mask)
 
     filtered_streamlines = mask_overlap_filter(streamlines, mask, args.fraction)
-    save_trk_streamlines(filtered_streamlines, args.output, mask)
+    save_trk_streamlines(filtered_streamlines, args.output, fib)
 
 
 def endpoint_filter(streamlines: nib.streamlines.array_sequence.ArraySequence, 
@@ -260,26 +269,27 @@ def endpoint_filter(streamlines: nib.streamlines.array_sequence.ArraySequence,
     labelmap_mip = np.max(labelmap, axis=3)
 
     # transform streamlines to voxel space
-    streamlines = transform_streamlines(streamlines, np.linalg.inv(ref_image.affine))
+    vox_streamlines = transform_streamlines(streamlines, np.linalg.inv(ref_image.affine))
 
     print('Applying endpoint filter')
 
     filtered_streamlines = []
-    for streamline in streamlines:
+    i = 0
+    for streamline in vox_streamlines:
         p1 = np.round(streamline[0]).astype('int64')
         p2 = np.round(streamline[-1]).astype('int64')
 
         if mode == 'both':
             if labelmap_mip[p1[0], p1[1], p1[2]] > 0 and labelmap_mip[p2[0], p2[1], p2[2]] > 0:
-                filtered_streamlines.append(streamline)
+                filtered_streamlines.append(streamlines[i])
         elif mode == 'any':
             if labelmap_mip[p1[0], p1[1], p1[2]] > 0 or labelmap_mip[p2[0], p2[1], p2[2]] > 0:
-                filtered_streamlines.append(streamline)
+                filtered_streamlines.append(streamlines[i])
         elif mode == 'one':
             if labelmap_mip[p1[0], p1[1], p1[2]] > 0 and labelmap_mip[p2[0], p2[1], p2[2]] == 0:
-                filtered_streamlines.append(streamline)
+                filtered_streamlines.append(streamlines[i])
             elif labelmap_mip[p1[0], p1[1], p1[2]] == 0 and labelmap_mip[p2[0], p2[1], p2[2]] > 0:
-                filtered_streamlines.append(streamline)
+                filtered_streamlines.append(streamlines[i])
         elif mode == 'both_labeldiff':
 
             labels_p1 = []
@@ -292,13 +302,14 @@ def endpoint_filter(streamlines: nib.streamlines.array_sequence.ArraySequence,
             if len(labels_p1) > 0 and len(labels_p2) > 0:
                 if len(labels_p1) == 1 and len(labels_p2) == 1:
                     if labels_p1[0] != labels_p2[0]:
-                        filtered_streamlines.append(streamline)
+                        filtered_streamlines.append(streamlines[i])
                 else:
-                    filtered_streamlines.append(streamline)
+                    filtered_streamlines.append(streamlines[i])
 
         elif mode == 'none':
             if labelmap_mip[p1[0], p1[1], p1[2]] == 0 and labelmap_mip[p2[0], p2[1], p2[2]] == 0:
-                filtered_streamlines.append(streamline)
+                filtered_streamlines.append(streamlines[i])
+        i += 1
 
     print(str(len(filtered_streamlines)) + ' of ' + str(len(streamlines)) + ' streamlines remaining')
 
@@ -322,11 +333,11 @@ def endpoint_filter_cmdentry():
 
     args = parser.parse_args()
 
-    streamlines = load_trk_streamlines(args.streamlines)
-    ref_image = nib.load(args.masks[0])
+    fib = load_trk(args.streamlines, "same", bbox_valid_check=False)
+    streamlines = fib.streamlines
 
     filtered_streamlines = endpoint_filter(streamlines, args.masks, args.mode)
-    save_trk_streamlines(filtered_streamlines, args.output, ref_image)
+    save_trk_streamlines(filtered_streamlines, args.output, fib)
 
 
 def length_filter(streamlines: nib.streamlines.array_sequence.ArraySequence,
