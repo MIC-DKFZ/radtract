@@ -747,7 +747,7 @@ def main():
     parser.add_argument('--streamline_space', help='If True, no voxel-space parcellation will be created but each streamline point will be assigned a label. The output is a pickled dict with keys \'points\' and \'parcels\', usable for classic tractometry (see features.py or radtract_features command).', action='store_true')
     parser.add_argument('--fast_mode', help='If True, the hyperplane-based parcellation is performed on the reduced number of streamlines and then projected to all streamlines. Probably less accurate.', action='store_true')
     parser.add_argument('--resample', help='If True, the input streamlines are resampled to 3*num_parcels points before parcellation. This increases coverage of the bundle for tractometry (streamline_space == True), but changes the bundle sampling and might drastically increase parcellation time (if hyperplane and not fast_mode).', action='store_true')
-    parser.add_argument('--output', type=str, help='Output parcellation image file')
+    parser.add_argument('--output', type=str, help='Output parcellation image file, or pickle file in case of the static parcellation (containing points and labels)')
 
     if len(sys.argv) == 1:
         parser.print_help()
