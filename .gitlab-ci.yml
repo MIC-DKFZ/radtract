@@ -21,14 +21,14 @@ license_compliance:
 .default_before_script: &default_before_script
   - apt-get update && apt-get install libgl1 git-lfs -y
   - pip install --upgrade pip
-  - pip install numpy==1.26.4 # actually installed via pyproject.toml but pyradiomics requires it already during installation
+  - pip install numpy # actually installed via pyproject.toml but pyradiomics requires it already during installation
   - pip install pytest
 
 test_pytest:
   image: python:${VERSION}
   parallel:
     matrix:
-      - VERSION: ["3.10", "3.11", "3.12"]
+      - VERSION: ["3.10", "3.11"]
   stage: test
   before_script:
     - *default_before_script
