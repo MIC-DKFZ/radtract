@@ -19,9 +19,11 @@ license_compliance:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 .default_before_script: &default_before_script
-  - apt-get update && apt-get install libgl1 git-lfs -y
+  - apt-get update && apt-get install libgl1 git-lfs build-essential -y
   - pip install --upgrade pip
   - pip install numpy # actually installed via pyproject.toml but pyradiomics requires it already during installation
+  - git clone --branch v3.1.0 --depth 1 https://github.com/Radiomics/pyradiomics /tmp/pyradiomics
+  - pip install /tmp/pyradiomics
   - pip install pytest
 
 test_pytest:

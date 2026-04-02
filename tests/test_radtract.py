@@ -83,7 +83,7 @@ def test_pyradiomics_features():
 
     tmp1 = new_features.drop(columns=['value'])
     tmp2 = features_df.drop(columns=['value'])
-    pd.testing.assert_frame_equal(tmp1, tmp2, check_dtype=False)
+    pd.testing.assert_frame_equal(tmp1, tmp2, check_dtype=False, check_column_type=False)
     
     i = 0
     for el1, el2 in zip(new_features['value'], features_df['value']):
